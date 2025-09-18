@@ -1,0 +1,36 @@
+{
+  "UseExternalP4": false,
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "P4Sync": "Debug"
+    },
+    "Console": {
+      "FormatterName": "simple",
+      "IncludeScopes": false
+    }
+  },
+  "SyncProfiles": [
+    {
+      "Name": "TestProfile",
+      "Source": {
+        "Port": "localhost:1666",
+        "User": "admin",
+        "Workspace": "testworkspace"
+      },
+      "Target": {
+        "Port": "localhost:1667",
+        "User": "admin",
+        "Workspace": "testworkspace2"
+      },
+      "SyncFilter": [
+        "*.cs",
+        "*.txt",
+        "!*.bin",
+        "!obj/",
+        "!bin/"
+      ],
+      "Schedule": "* * * * *"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+.gemini
+/bin/
+/obj/
+bin
+obj
+*/bin/*
+*/obj/*
+src/bin/*
+src/obj/*
+backup/*
+*.log

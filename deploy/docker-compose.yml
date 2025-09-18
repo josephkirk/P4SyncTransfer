@@ -1,0 +1,87 @@
+services:
+  perforce-source:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: p4sync-source-server
+    ports:
+      - "1666:1666"
+    environment:
+      - P4ROOT=/opt/perforce
+      - P4PORT=1666
+      - P4USER=admin
+      - P4PASSWD=admin123
+    volumes:
+      - perforce-source-data:/opt/perforce
+      - ./test-data:/test-data
+    networks:
+      - p4sync-network
+    command: ["p4d", "-r", "/opt/perforce", "-p", "1666"]
+
+  perforce-target:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: p4sync-target-server
+    ports:
+      - "1667:1667"
+    environment:
+      - P4ROOT=/opt/perforce
+      - P4PORT=1667
+      - P4USER=admin
+      - P4PASSWD=admin123
+    volumes:
+      - perforce-target-data:/opt/perforce
+      - ./test-data:/test-data
+    networks:
+      - p4sync-network
+    command: ["p4d", "-r", "/opt/perforce", "-p", "1667"]
+
+  perforce-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: p4sync-test-client
+    depends_on:
+      - perforce-source
+      - perforce-target
+    environment:
+      - P4PORT=perforce-source:1666
+      - P4USER=admin
+      - P4CLIENT=testworkspace
+    volumes:
+      - ./test-data:/workspace
+    working_dir: /workspace
+    networks:
+      - p4sync-network
+    command: >
+      sh -c "
+        sleep 20 &&
+        echo 'Setting up test data on source server...' &&
+        p4 trust -y &&
+        p4 login -a admin123 &&
+        p4 workspace -o | sed 's/Host:.*/Host: p4sync-test-client/' | p4 workspace -i &&
+        mkdir -p /workspace/test-files &&
+        echo 'This is a C# source file' > /workspace/test-files/TestClass.cs &&
+        echo 'This is a text file' > /workspace/test-files/readme.txt &&
+        echo 'This is a binary file' > /workspace/test-files/data.bin &&
+        mkdir -p /workspace/test-files/obj &&
+        echo 'Object file' > /workspace/test-files/obj/temp.obj &&
+        mkdir -p /workspace/test-files/bin &&
+        echo 'Binary file' > /workspace/test-files/bin/app.exe &&
+        p4 add /workspace/test-files/... &&
+        p4 submit -d 'Initial test data submission' &&
+        echo 'Test data populated on source server (port 1666)' &&
+        echo 'Test files created:' &&
+        p4 files //depot/...
+      "
+
+volumes:
+  perforce-source-data:
+    driver: local
+  perforce-target-data:
+    driver: local
+
+networks:
+  p4sync-network:
+    driver: bridge

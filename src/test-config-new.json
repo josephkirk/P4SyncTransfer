@@ -1,0 +1,21 @@
+{
+  "SyncProfiles": [
+    {
+      "Name": "Test Sync",
+      "Source": {
+        "Port": "perforce:1666",
+        "User": "testuser",
+        "Workspace": "testworkspace"
+      },
+      "Target": {
+        "Port": "perforce:1667",
+        "User": "testuser",
+        "Workspace": "testworkspace"
+      },
+      "SyncFilter": [
+        "//depot/main/..."
+      ],
+      "Schedule": "0 * * * *"
+    }
+  ]
+}

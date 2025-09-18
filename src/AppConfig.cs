@@ -1,0 +1,28 @@
+using System.Collections.Generic;
+
+namespace P4Sync
+{
+    public class P4Connection
+    {
+        public string? Port { get; set; }
+        public string? User { get; set; }
+        public string? Workspace { get; set; }
+    }
+
+    public class SyncProfile
+    {
+        public string? Name { get; set; }
+        public P4Connection? Source { get; set; }
+        public P4Connection? Target { get; set; }
+        public List<string>? SyncFilter { get; set; }
+        public string? Schedule { get; set; }
+    }
+
+    public class AppConfig
+    {
+        public string[]? Filters { get; set; }
+        public List<SyncProfile>? SyncProfiles { get; set; }
+        public LoggingConfiguration? Logging { get; set; }
+        public bool UseExternalP4 { get; set; } = true; // Default to using external P4 executable
+    }
+}

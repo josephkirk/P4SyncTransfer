@@ -1,0 +1,19 @@
+{
+  "SyncProfiles": [
+    {
+      "Name": "TestProfile",
+      "Source": {
+        "Port": "localhost:1666",
+        "User": "admin",
+        "Workspace": "testworkspace"
+      },
+      "Target": {
+        "Port": "localhost:1666",
+        "User": "admin",
+        "Workspace": "testworkspace"
+      },
+      "SyncFilter": ["//depot/src/..."],
+      "Schedule": "0 * * * *"
+    }
+  ]
+}

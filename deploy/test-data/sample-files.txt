@@ -1,0 +1,54 @@
+// Sample test files for P4Sync testing
+
+// Source files
+//depot/src/main.cs
+using System;
+
+namespace TestApp
+{
+    public class MainClass
+    {
+        public static void Main(string[] args)
+        {
+            Console.WriteLine("Hello from source!");
+        }
+    }
+}
+
+//depot/src/utils.cs
+using System;
+
+namespace TestApp
+{
+    public static class Utils
+    {
+        public static void Helper()
+        {
+            Console.WriteLine("Helper method");
+        }
+    }
+}
+
+//depot/docs/readme.txt
+P4Sync Test Documentation
+
+This is a test file for P4Sync functionality.
+It contains sample documentation that should be synced.
+
+//depot/config/settings.json
+{
+    "app": {
+        "name": "P4Sync Test",
+        "version": "1.0.0",
+        "environment": "test"
+    },
+    "database": {
+        "host": "localhost",
+        "port": 5432
+    }
+}
+
+// Target-specific files
+//depot/target/special.txt
+This file is specific to the target environment.
+It should not exist in the source initially.

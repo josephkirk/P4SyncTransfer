@@ -1,0 +1,51 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "P4Sync": "Debug"
+    },
+    "Console": {
+      "FormatterName": "simple",
+      "IncludeScopes": false
+    }
+  },
+  "Filters": null,
+  "UseExternalP4": false,
+  "SyncProfiles": [
+    {
+      "Name": "EmbeddedP4TestProfile",
+      "Source": {
+        "Port": "localhost:1666",
+        "User": "admin",
+        "Workspace": "testworkspace"
+      },
+      "Target": {
+        "Port": "localhost:1667",
+        "User": "admin",
+        "Workspace": "workspace"
+      },
+      "SyncFilter": [
+        "//depot/test-files/....cs",
+        "//depot/test-files/....txt"
+      ]
+    },
+    {
+      "Name": "ExternalP4TestProfile",
+      "UseExternalP4": true,
+      "Source": {
+        "Port": "localhost:1666",
+        "User": "admin",
+        "Workspace": "testworkspace"
+      },
+      "Target": {
+        "Port": "localhost:1667",
+        "User": "admin",
+        "Workspace": "workspace"
+      },
+      "SyncFilter": [
+        "//depot/test-files/....cs",
+        "//depot/test-files/....txt"
+      ]
+    }
+  ]
+}

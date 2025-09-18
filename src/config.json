@@ -1,0 +1,33 @@
+{
+  "UseExternalP4": true,
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "P4Sync": "Debug"
+    },
+    "Console": {
+      "FormatterName": "simple",
+      "IncludeScopes": false
+    }
+  },
+  "SyncProfiles": [
+    {
+      "Name": "Default Sync",
+      "Source": {
+        "Port": "perforce:1666",
+        "User": "user",
+        "Workspace": "workspace"
+      },
+      "Target": {
+        "Port": "perforce:1667",
+        "User": "user",
+        "Workspace": "workspace"
+      },
+      "SyncFilter": [
+        "//depot/main/....cs",
+        "//depot/main/....txt"
+      ],
+      "Schedule": "0 * * * *"
+    }
+  ]
+}
