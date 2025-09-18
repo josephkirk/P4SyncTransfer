@@ -110,22 +110,8 @@ namespace P4Sync
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Exception getting client information, continuing with sync");
-                _logger.LogDebug("Exception type: {ExceptionType}", ex.GetType().Name);
-
-                // Create basic client objects if GetClient fails
-                if (sourceClient == null)
-                {
-                    sourceClient = new Client();
-                    sourceClient.Name = profile.Source.Workspace;
-                    _logger.LogDebug("Created fallback source client");
-                }
-                if (targetClient == null)
-                {
-                    targetClient = new Client();
-                    targetClient.Name = profile.Target.Workspace;
-                    _logger.LogDebug("Created fallback target client");
-                }
+                _logger.LogError(ex, "Failed to get client information for sync");
+                throw;
             }
 
             // Execute source to target sync
