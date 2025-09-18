@@ -16,6 +16,8 @@ namespace P4Sync
         public P4Connection? Target { get; set; }
         public List<string>? SyncFilter { get; set; }
         public string? Schedule { get; set; }
+        public Dictionary<string, string>? PathMappings { get; set; }
+        public bool AutoSubmit { get; set; } = false; // Whether to automatically submit changelists after sync operations
     }
 
     public class AppConfig

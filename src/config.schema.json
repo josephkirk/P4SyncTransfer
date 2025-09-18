@@ -1,11 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "P4Sync Configuration Schema",
+  "description": "JSON schema for P4Sync configuration files",
+  "version": "2.0.0",
   "type": "object",
   "properties": {
     "UseExternalP4": {
       "type": "boolean",
-      "description": "Whether to use external p4.exe instead of embedded P4 library",
-      "default": true
+      "description": "Whether to use external p4.exe instead of embedded P4 library. External mode provides better performance and compatibility with complex Perforce configurations but requires p4.exe to be installed. Embedded mode offers better portability but may have limitations with advanced Perforce features.",
+      "default": true,
+      "examples": [true, false]
     },
     "Filters": {
       "type": "array",
@@ -51,14 +55,45 @@
             "examples": [
               "//depot/main/...txt",
               "//depot/projects/...cs",
-              "//depot/docs/...md"
+              "//depot/docs/...md",
+              "//depot/main/src/...*",
+              "//depot/binaries/...exe"
             ]
           },
-          "description": "Perforce filespec patterns for files to sync (e.g., '//depot/main/...txt', '//depot/folder/...json')"
+          "description": "Array of Perforce filespec patterns for filtering files during synchronization. Patterns must start with '//depot/' and can include wildcards like '...' for recursive matching and '*' for file name matching. Examples: '//depot/main/...txt' matches all .txt files recursively, '//depot/src/...*.cs' matches all .cs files in src directory tree.",
+          "minItems": 1
         },
         "Schedule": {
           "type": "string",
           "description": "Cron schedule for automatic sync"
+        },
+        "AutoSubmit": {
+          "type": "boolean",
+          "description": "Automatically submit changelists after sync operations. When enabled, all file operations (add/edit/delete) will be automatically submitted with descriptive changelist messages. Default is false for safety.",
+          "default": false,
+          "examples": [true, false]
+        },
+        "PathMappings": {
+          "type": "object",
+          "patternProperties": {
+            "^//[^/]+/.*": {
+              "type": "string",
+              "pattern": "^//[^/]+/.*",
+              "description": "Target depot path mapping"
+            }
+          },
+          "description": "Dictionary of path mappings for workspace-aware translation. Maps source depot paths to target depot paths. Used when automatic stream-based discovery is insufficient.",
+          "examples": [
+            {
+              "//depot/source/": "//projects/build/",
+              "//depot/main/src/": "//projects/release/bin/"
+            }
+          ]
+        },
+        "UseExternalP4": {
+          "type": "boolean",
+          "description": "Override the global UseExternalP4 setting for this specific profile. Allows different profiles to use different P4 operation modes.",
+          "examples": [true, false]
         }
       },
       "required": ["Name", "Source", "Target"],

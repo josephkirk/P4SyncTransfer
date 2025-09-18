@@ -14,6 +14,8 @@ A robust, enterprise-grade .NET 10.0 application for synchronizing files between
 - **Enterprise Logging**: Structured logging with configurable levels and output formats
 - **Containerized Testing**: Complete Docker/Podman environment for isolated testing
 - **Change Management**: Submit all changes in organized changelists with proper metadata
+- **Auto-Submit Functionality**: Automatically submit changelists after sync operations
+- **Workspace-Aware Path Mapping**: Intelligent path translation that respects Perforce workspace configurations
 - **Backward Compatibility**: Maintains compatibility with existing configurations and workflows
 
 ## Installation and Setup
@@ -70,6 +72,114 @@ P4Sync now supports a command-line interface for easier usage:
 - `dotnet run validate-config [--config <file>]` - Validate configuration file
 - `dotnet run --help` - Show help information
 
+### Advanced Usage
+
+#### Running Specific Profiles
+
+While the CLI doesn't currently support running individual profiles, you can create separate configuration files for different environments:
+
+```bash
+# Production configuration
+dotnet run sync --config production-config.json
+
+# Development configuration  
+dotnet run sync --config development-config.json
+
+# Staging configuration
+dotnet run sync --config staging-config.json
+```
+
+#### Configuration Validation
+
+Always validate your configuration before running sync operations:
+
+```bash
+dotnet run validate-config --config myconfig.json
+```
+
+This will check for:
+- Required fields presence
+- JSON schema compliance
+- Perforce connection parameter validation
+- Path mapping syntax correctness
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### Auto-Submit Failures
+
+**Problem**: Auto-submit fails with "Some file(s) could not be transferred from client"
+
+**Solution**: This usually indicates that file content wasn't written to the local file system before submission. Ensure:
+- The target workspace has proper permissions
+- There's sufficient disk space
+- The client root directory is accessible
+- Check the debug logs for specific file path issues
+
+#### Path Mapping Issues
+
+**Problem**: Files aren't syncing to expected locations
+
+**Solutions**:
+- Verify workspace client roots are correctly configured
+- Check that `p4 fstat` and `p4 where` commands work manually
+- Ensure path mappings use correct Perforce depot syntax (`//depot/path/`)
+- Review debug logs for path translation details
+
+#### Connection Problems
+
+**Problem**: Unable to connect to Perforce servers
+
+**Solutions**:
+- Verify server ports and credentials
+- Check network connectivity
+- Ensure workspaces exist and are properly configured
+- Test connections manually with `p4 info`
+
+#### Filter Pattern Issues
+
+**Problem**: Unexpected files are being synced or filtered out
+
+**Solutions**:
+- Use Perforce filespec syntax: `//depot/path/...pattern`
+- Test patterns manually with `p4 files` command
+- Check for typos in depot paths
+- Review filter precedence and combination effects
+
+#### Performance Issues
+
+**Problem**: Sync operations are slow
+
+**Solutions**:
+- Use more specific filter patterns to reduce file scanning
+- Enable external P4 operations for better performance
+- Schedule syncs during off-peak hours
+- Consider workspace view optimizations
+
+### Debug Logging
+
+Enable debug logging to troubleshoot issues:
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "P4Sync": "Debug"
+    }
+  }
+}
+```
+
+### Getting Help
+
+For additional support:
+1. Check the debug logs for detailed error information
+2. Validate your configuration with `validate-config` command
+3. Test Perforce connections manually
+4. Review the examples in this documentation
+
 ### Examples
 
 ```bash
@@ -121,44 +231,230 @@ Sync profiles can be scheduled using cron expressions. Some examples:
 
 ## Configuration
 
-The `config.json` file has the following structure:
+## Workspace-Aware Path Mapping
+
+P4Sync now supports sophisticated workspace-aware path mapping that respects Perforce workspace configurations and client views. This feature allows you to sync files between servers with different depot structures while maintaining proper workspace mappings.
+
+### How Workspace-Aware Path Mapping Works
+
+The workspace-aware path mapping uses a three-step process:
+
+1. **Resolve Depot to Client**: Uses `p4 fstat` to resolve depot paths to their corresponding client file paths
+2. **Calculate Relative Path**: Converts client file paths to relative paths using the source workspace's client root
+3. **Resolve to Target Depot**: Uses `p4 where` to resolve the relative path back to a depot path on the target server
+
+### Benefits
+
+- **Respects Workspace Views**: Works correctly with complex Perforce workspace view mappings
+- **Handles Different Depot Structures**: Maps between servers with different depot hierarchies
+- **Automatic Fallback**: Falls back to simple string replacement if workspace information is unavailable
+- **Robust Error Handling**: Continues operation even if individual path translations fail
+
+### Configuration Example
 
 ```json
 {
+  "Name": "Workspace-Aware Sync",
+  "Source": {
+    "Port": "perforce:1666",
+    "User": "developer",
+    "Workspace": "dev_workspace"
+  },
+  "Target": {
+    "Port": "perforce:1667",
+    "User": "builder",
+    "Workspace": "build_workspace"
+  },
+  "SyncFilter": [
+    "//depot/source/....cs"
+  ],
+  "PathMappings": {
+    "//depot/source/": "//projects/build/"
+  }
+}
+```
+
+### Path Translation Process
+
+For a file `//depot/source/main/File.cs`:
+
+1. **Source Resolution**: `p4 fstat //depot/source/main/File.cs` → `/home/dev/workspace/main/File.cs`
+2. **Relative Path**: Remove source client root `/home/dev/workspace/` → `main/File.cs`
+3. **Target Resolution**: `p4 where main/File.cs` on target → `//projects/build/main/File.cs`
+
+### Fallback Behavior
+
+If workspace information cannot be retrieved or path resolution fails, P4Sync automatically falls back to simple string replacement using the `PathMappings` configuration.
+
+### Advanced Examples
+
+#### Multiple Path Mappings
+```json
+{
+  "PathMappings": {
+    "//depot/main/src/": "//projects/release/bin/",
+    "//depot/main/tests/": "//projects/release/tests/",
+    "//depot/docs/": "//projects/docs/"
+  }
+}
+```
+
+#### Cross-Platform Workspace Mapping
+```json
+{
+  "Source": {
+    "Port": "perforce:1666",
+    "User": "user",
+    "Workspace": "unix_workspace"
+  },
+  "Target": {
+    "Port": "perforce:1667",
+    "User": "user",
+    "Workspace": "windows_workspace"
+  },
+  "PathMappings": {
+    "//depot/unix/": "//depot/windows/"
+  }
+}
+```
+
+This handles the automatic path separator conversion between Unix (`/`) and Windows (`\`) paths.
+
+## Auto-Submit Functionality
+
+P4Sync now supports automatic changelist submission after sync operations, making the entire sync process fully automated without requiring manual intervention.
+
+### How Auto-Submit Works
+
+When `AutoSubmit` is enabled in a sync profile:
+
+1. **File Operations**: Files are added or edited in the target workspace
+2. **Content Writing**: File content is written to the local file system
+3. **Changelist Management**: All changes are organized into a single changelist
+4. **Automatic Submission**: The changelist is automatically submitted with a descriptive message
+5. **Error Handling**: Comprehensive error handling with detailed logging
+
+### Configuration
+
+Enable auto-submit by adding `"AutoSubmit": true` to your sync profile:
+
+```json
+{
+  "Name": "Auto-Submit Sync",
+  "Source": {
+    "Port": "perforce:1666",
+    "User": "developer",
+    "Workspace": "dev_workspace"
+  },
+  "Target": {
+    "Port": "perforce:1667",
+    "User": "builder",
+    "Workspace": "build_workspace"
+  },
+  "SyncFilter": [
+    "//depot/source/....cs"
+  ],
+  "AutoSubmit": true,
+  "Schedule": "0 */2 * * *"
+}
+```
+
+### Benefits
+
+- **Fully Automated**: No manual changelist submission required
+- **Consistent Workflow**: Ensures all sync operations are properly committed
+- **Error Prevention**: Reduces risk of forgotten changelist submissions
+- **Audit Trail**: Automatic changelist descriptions with timestamps
+- **Backward Compatible**: Disabled by default to maintain existing workflows
+
+### Changelist Messages
+
+Auto-submitted changelists include descriptive messages:
+- **Add Operations**: `"P4Sync additions YYYY-MM-DD HH:mm:ss"`
+- **Edit Operations**: `"P4Sync updates YYYY-MM-DD HH:mm:ss"`
+- **Delete Operations**: `"P4Sync deletions YYYY-MM-DD HH:mm:ss"`
+
+### Safety Features
+
+- **Opt-in Only**: Auto-submit must be explicitly enabled per profile
+- **Error Handling**: Failed submissions are logged but don't break the sync process
+- **Validation**: Pre-submission checks ensure files are properly staged
+- **Fallback**: Manual submission still possible if auto-submit fails
+
+### Complete Configuration Example
+
+Here's a comprehensive configuration example showing all available features:
+
+```json
+{
+  "UseExternalP4": true,
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "P4Sync": "Debug"
+    },
+    "Console": {
+      "FormatterName": "simple",
+      "IncludeScopes": false
+    }
+  },
   "SyncProfiles": [
     {
-      "Name": "MainProfile",
+      "Name": "Production Sync with Auto-Submit",
       "Source": {
-        "Port": "perforce:1666",
-        "User": "user",
-        "Workspace": "workspace"
+        "Port": "prod-perforce.company.com:1666",
+        "User": "builduser",
+        "Workspace": "prod_workspace"
       },
       "Target": {
-        "Port": "perforce:1667",
-        "User": "user",
-        "Workspace": "workspace"
+        "Port": "staging-perforce.company.com:1666",
+        "User": "builduser",
+        "Workspace": "staging_workspace"
       },
-      "SyncFilter": ["//depot/main/....cs", "//depot/docs/....md"],
-      "Schedule": "0 */2 * * *"
+      "SyncFilter": [
+        "//depot/main/src/....cs",
+        "//depot/main/config/....json",
+        "//depot/main/docs/....md"
+      ],
+      "PathMappings": {
+        "//depot/main/src/": "//projects/staging/src/",
+        "//depot/main/config/": "//projects/staging/config/",
+        "//depot/main/docs/": "//projects/staging/docs/"
+      },
+      "AutoSubmit": true,
+      "Schedule": "0 */4 * * *",
+      "UseExternalP4": true
     },
     {
-      "Name": "SecondaryProfile",
+      "Name": "Development Manual Sync",
       "Source": {
-        "Port": "perforce:1666",
-        "User": "user2",
-        "Workspace": "workspace2"
+        "Port": "dev-perforce.company.com:1666",
+        "User": "developer",
+        "Workspace": "dev_workspace"
       },
       "Target": {
-        "Port": "perforce:1667",
-        "User": "user2",
-        "Workspace": "workspace2"
+        "Port": "dev-perforce.company.com:1666",
+        "User": "developer",
+        "Workspace": "test_workspace"
       },
-      "SyncFilter": ["//depot/binaries/...dll", "//depot/binaries/...exe"],
-      "Schedule": "0 0 * * *"
+      "SyncFilter": [
+        "//depot/dev/....cs",
+        "//depot/dev/....txt"
+      ],
+      "AutoSubmit": false,
+      "UseExternalP4": false
     }
   ]
 }
 ```
+
+This example demonstrates:
+- **Global Settings**: `UseExternalP4` and logging configuration
+- **Auto-Submit**: Enabled for production, disabled for development
+- **Path Mappings**: Custom workspace-aware path translation
+- **Profile Overrides**: `UseExternalP4` can be overridden per profile
+- **Scheduling**: Different schedules for different environments
+- **Filtering**: Multiple file patterns for different content types
 
 -   `SyncProfiles`: An array of sync profiles with the following properties:
     -   `Name`: A unique name for the profile.
@@ -166,6 +462,9 @@ The `config.json` file has the following structure:
     -   `Target`: The target Perforce server details for this profile.
     -   `SyncFilter`: Array of Perforce filespec patterns for filtering files during synchronization (e.g., "//depot/main/...cs" for C# files).
     -   `Schedule`: Cron expression for scheduling the sync (e.g., "0 */2 * * *" for every 2 hours).
+    -   `AutoSubmit`: (Optional) Automatically submit changelists after sync operations (default: false).
+    -   `PathMappings`: (Optional) Dictionary of path mappings for workspace-aware translation.
+    -   `UseExternalP4`: (Optional) Override global UseExternalP4 setting for this profile.
 
 ## Automated Testing
 
