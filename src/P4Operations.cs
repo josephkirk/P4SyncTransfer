@@ -32,41 +32,16 @@ namespace P4Sync
             try
             {
                 var server = new Server(new ServerAddress(connection.Port));
-                var con = new Connection(server);
+                var repo = new Repository(server);
+                var con = repo.Connection;
                 con.UserName = connection.User;
                 con.Client = new Client();
                 con.Client.Name = connection.Workspace;
 
-                // Create repository and try to associate it with the connection
-                var repo = new Repository(server);
+                // Connect to the server
+                con.Connect(null);
 
-                // Try to associate the repository with the connection using reflection
-                try
-                {
-                    var connectionField = repo.GetType().GetField("connection", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    if (connectionField != null)
-                    {
-                        connectionField.SetValue(repo, con);
-                        _logger.LogDebug("Repository associated with connection via reflection for {Port}", connection.Port);
-                    }
-                    else
-                    {
-                        var connectionProperty = repo.GetType().GetProperty("Connection", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                        if (connectionProperty != null && connectionProperty.CanWrite)
-                        {
-                            connectionProperty.SetValue(repo, con);
-                            _logger.LogDebug("Repository associated with connection via property for {Port}", connection.Port);
-                        }
-                        else
-                        {
-                            _logger.LogDebug("Could not associate repository with connection for {Port}", connection.Port);
-                        }
-                    }
-                }
-                catch (Exception assocEx)
-                {
-                    _logger.LogDebug(assocEx, "Exception associating repository with connection");
-                }
+                _logger.LogDebug("Repository and connection created and connected for {Port}", connection.Port);
 
                 return (repo, con);
             }
@@ -122,14 +97,14 @@ namespace P4Sync
                 _logger.LogDebug("Getting source client: {Workspace}", profile.Source.Workspace);
                 if (!string.IsNullOrEmpty(profile.Source.Workspace))
                 {
-                    sourceClient = GetClientInfo(sourceConnection, profile.Source.Workspace);
+                    sourceClient = GetClientInfo(sourceRepo, profile.Source.Workspace);
                 }
                 _logger.LogDebug("Source client retrieved: {Result}", sourceClient != null ? "Success" : "Failed");
 
                 _logger.LogDebug("Getting target client: {Workspace}", profile.Target.Workspace);
                 if (!string.IsNullOrEmpty(profile.Target.Workspace))
                 {
-                    targetClient = GetClientInfo(targetConnection, profile.Target.Workspace);
+                    targetClient = GetClientInfo(targetRepo, profile.Target.Workspace);
                 }
                 _logger.LogDebug("Target client retrieved: {Result}", targetClient != null ? "Success" : "Failed");
             }
@@ -188,7 +163,39 @@ namespace P4Sync
 
                 _logger.LogInformation("Executing {Direction} sync for profile: {ProfileName}", direction, profile.Name);
 
-                _logger.LogDebug("Filter patterns: {PatternCount} patterns", filterPatterns.Count);
+            // Get workspace information for path translation
+            _logger.LogDebug("Getting workspace information for path translation");
+            var sourceWorkspace = new WorkspaceInfo();
+            var targetWorkspace = new WorkspaceInfo();
+            var pathMappings = new Dictionary<string, string>();
+
+            if (fromRepo != null && !string.IsNullOrEmpty(profile.Source.Workspace))
+            {
+                sourceWorkspace = GetWorkspaceInfo(fromRepo, profile.Source.Workspace);
+            }
+            if (toRepo != null && !string.IsNullOrEmpty(profile.Target.Workspace))
+            {
+                targetWorkspace = GetWorkspaceInfo(toRepo, profile.Target.Workspace);
+            }
+            pathMappings = DiscoverAutomaticPathMappings(sourceWorkspace, targetWorkspace);
+
+            _logger.LogDebug("Profile PathMappings count: {Count}", profile.PathMappings?.Count ?? 0);
+
+            // Use explicit path mappings from profile if provided
+            if (profile.PathMappings != null && profile.PathMappings.Count > 0)
+            {
+                pathMappings = profile.PathMappings;
+                _logger.LogDebug("Using explicit path mappings from profile: {Mappings}", string.Join(", ", profile.PathMappings.Select(m => $"{m.Key}->{m.Value}")));
+            }
+            else
+            {
+                _logger.LogDebug("Using automatically discovered path mappings: {Mappings}", string.Join(", ", pathMappings.Select(m => $"{m.Key}->{m.Value}")));
+            }
+
+            _logger.LogInformation("Path mappings for sync: {Mappings}", string.Join(", ", pathMappings.Select(m => $"{m.Key}->{m.Value}")));
+
+            // Translate filter patterns to target paths
+            var targetFilterPatterns = TranslateFilterPatternsToTarget(filterPatterns, pathMappings);
 
                 var syncOperations = new Dictionary<string, SyncOperation>();
 
@@ -232,7 +239,7 @@ namespace P4Sync
                 var targetFilteredFiles = new List<FileMetaData>();
                 if (toRepo != null)
                 {
-                    targetFilteredFiles = GetFilteredFiles(toConnection, filterPatterns);
+                    targetFilteredFiles = GetFilteredFiles(toConnection, targetFilterPatterns);
                 }
                 else
                 {
@@ -240,37 +247,43 @@ namespace P4Sync
                 }
                 _logger.LogDebug("Found {FileCount} target filtered files", targetFilteredFiles.Count);
 
-                // Create dictionaries for quick lookup (like the working external implementation)
+                // Create dictionaries for quick lookup
                 var sourceFileDict = sourceFilteredFiles.ToDictionary(f => f.DepotPath.Path, f => f);
                 var targetFileDict = targetFilteredFiles.ToDictionary(f => f.DepotPath.Path, f => f);
 
                 // Determine operations needed (files to add/edit from source)
                 var allOperations = new Dictionary<string, SyncOperation>();
+                var targetToSourcePathMap = new Dictionary<string, string>(); // Maps target path to source path
 
                 // Files that exist in source but not in target = ADD
                 // Files that exist in both but are different = EDIT
                 foreach (var sourceFile in sourceFilteredFiles)
                 {
-                    var depotPath = sourceFile.DepotPath.Path;
-                    if (!targetFileDict.ContainsKey(depotPath))
+                    var sourcePath = sourceFile.DepotPath.Path;
+                    var targetPath = TranslateSourcePathToTarget(sourcePath, pathMappings);
+
+                    targetToSourcePathMap[targetPath] = sourcePath;
+
+                    if (!targetFileDict.ContainsKey(targetPath))
                     {
-                        allOperations[depotPath] = SyncOperation.Add;
-                        _logger.LogDebug("File {FilePath} will be ADDED to target", depotPath);
+                        allOperations[targetPath] = SyncOperation.Add;
+                        _logger.LogDebug("File {SourcePath} (translated to {TargetPath}) will be ADDED to target", sourcePath, targetPath);
                     }
                     else
                     {
                         // File exists in both - check if it needs updating
-                        var sourceContents = GetFileContents(fromConnection, depotPath);
-                        var targetContents = GetFileContents(toConnection, depotPath);
+                        var targetFile = targetFileDict[targetPath];
+                        var sourceContents = GetFileContents(fromConnection, sourcePath);
+                        var targetContents = GetFileContents(toConnection, targetPath);
                         
                         if (!sourceContents.SequenceEqual(targetContents))
                         {
-                            allOperations[depotPath] = SyncOperation.Edit;
-                            _logger.LogDebug("File {FilePath} will be EDITED on target", depotPath);
+                            allOperations[targetPath] = SyncOperation.Edit;
+                            _logger.LogDebug("File {SourcePath} (translated to {TargetPath}) will be EDITED on target", sourcePath, targetPath);
                         }
                         else
                         {
-                            _logger.LogDebug("File {FilePath} is identical, skipping", depotPath);
+                            _logger.LogDebug("File {SourcePath} (translated to {TargetPath}) is identical, skipping", sourcePath, targetPath);
                         }
                     }
                 }
@@ -278,11 +291,14 @@ namespace P4Sync
                 // Files that exist in target but not in source = DELETE
                 foreach (var targetFile in targetFilteredFiles)
                 {
-                    var depotPath = targetFile.DepotPath.Path;
-                    if (!sourceFileDict.ContainsKey(depotPath))
+                    var targetPath = targetFile.DepotPath.Path;
+                    var sourcePath = TranslateTargetPathToSource(targetPath, pathMappings);
+
+                    if (!sourceFileDict.ContainsKey(sourcePath))
                     {
-                        allOperations[depotPath] = SyncOperation.Delete;
-                        _logger.LogDebug("File {FilePath} will be DELETED from target", depotPath);
+                        allOperations[targetPath] = SyncOperation.Delete;
+                        targetToSourcePathMap[targetPath] = sourcePath; // Even for delete, map it
+                        _logger.LogDebug("File {TargetPath} (translated from {SourcePath}) will be DELETED from target", targetPath, sourcePath);
                     }
                 }
 
@@ -295,40 +311,43 @@ namespace P4Sync
                 // Execute the operations
                 foreach (var operation in allOperations)
                 {
-                    var depotPath = operation.Key;
+                    var targetPath = operation.Key;
                     var syncOp = operation.Value;
                     
-                    _logger.LogDebug("Processing {Operation} operation for file: {FilePath}", syncOp, depotPath);
+                    _logger.LogDebug("Processing {Operation} operation for file: {TargetPath}", syncOp, targetPath);
 
-                    // Get relative path by removing client root
+                    // Get the source path for content retrieval
+                    var sourcePath = targetToSourcePathMap.ContainsKey(targetPath) ? targetToSourcePathMap[targetPath] : targetPath;
+
+                    // Get relative path by removing client root (use target client for target operations)
                     var relativePath = string.Empty;
-                    if (fromClient != null && !string.IsNullOrEmpty(fromClient.Root))
+                    if (toClient != null && !string.IsNullOrEmpty(toClient.Root))
                     {
-                        relativePath = GetRelativePath(depotPath, fromClient.Root);
+                        relativePath = GetRelativePath(targetPath, toClient.Root);
                     }
                     else
                     {
-                        _logger.LogDebug("Cannot get relative path - source client is null or root is empty");
-                        relativePath = depotPath; // fallback to depot path
+                        _logger.LogDebug("Cannot get relative path - target client is null or root is empty");
+                        relativePath = targetPath; // fallback
                     }
 
                     // Execute the operation
                     if (syncOp == SyncOperation.Add)
                     {
                         _logger.LogInformation("File does not exist on target, adding...");
-                        var fileContents = GetFileContents(fromConnection, depotPath);
+                        var fileContents = GetFileContents(fromConnection, sourcePath);
                         if (toConnection != null && fileContents.Any())
                         {
-                            AddFileToTarget(toConnection, depotPath, fileContents);
+                            AddFileToTarget(toConnection, targetPath, fileContents);
                         }
                     }
                     else if (syncOp == SyncOperation.Edit)
                     {
                         _logger.LogInformation("File is different, updating...");
-                        var fileContents = GetFileContents(fromConnection, depotPath);
+                        var fileContents = GetFileContents(fromConnection, sourcePath);
                         if (toConnection != null && fileContents.Any())
                         {
-                            EditFileOnTarget(toConnection, depotPath, fileContents);
+                            EditFileOnTarget(toConnection, targetPath, fileContents);
                         }
                     }
                     else if (syncOp == SyncOperation.Delete)
@@ -336,7 +355,7 @@ namespace P4Sync
                         _logger.LogInformation("File no longer exists on source, deleting from target...");
                         if (toConnection != null)
                         {
-                            DeleteFileFromTarget(toConnection, depotPath);
+                            DeleteFileFromTarget(toConnection, targetPath);
                         }
                     }
 
@@ -374,11 +393,21 @@ namespace P4Sync
         /// </summary>
         private string GetRelativePath(string depotPath, string clientRoot)
         {
-            // Remove leading //depot/ and client root to get relative path
+            // For depot paths like //depot/project/relative, get the relative part
             var pathWithoutDepot = depotPath.StartsWith("//") ? depotPath.Substring(2) : depotPath;
-            if (pathWithoutDepot.Contains('/'))
+            var firstSlash = pathWithoutDepot.IndexOf('/');
+            if (firstSlash >= 0)
             {
-                pathWithoutDepot = pathWithoutDepot.Substring(pathWithoutDepot.IndexOf('/') + 1);
+                var afterDepot = pathWithoutDepot.Substring(firstSlash + 1);
+                var secondSlash = afterDepot.IndexOf('/');
+                if (secondSlash >= 0)
+                {
+                    pathWithoutDepot = afterDepot.Substring(secondSlash + 1);
+                }
+                else
+                {
+                    pathWithoutDepot = afterDepot;
+                }
             }
 
             // Ensure client root ends with separator
@@ -407,61 +436,219 @@ namespace P4Sync
         }
 
         /// <summary>
-        /// Gets client information using external P4 process to avoid P4API issues
+        /// Simple structure to hold workspace client information
         /// </summary>
-        private Client? GetClientInfo(Connection connection, string clientName)
+        private class WorkspaceInfo
+        {
+            public string ClientRoot { get; set; } = string.Empty;
+            public Dictionary<string, string> ViewMappings { get; set; } = new Dictionary<string, string>();
+            public Dictionary<string, string> DepotToClientMappings { get; set; } = new Dictionary<string, string>();
+            public Dictionary<string, string> ClientToDepotMappings { get; set; } = new Dictionary<string, string>();
+        }
+
+        /// <summary>
+        /// Gets client information using P4API
+        /// </summary>
+        private Client? GetClientInfo(Repository repo, string clientName)
         {
             try
             {
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {clientName} client -o {clientName}";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
-
-                p4Process.Start();
-                var output = p4Process.StandardOutput.ReadToEnd();
-                var error = p4Process.StandardError.ReadToEnd();
-                p4Process.WaitForExit();
-
-                if (p4Process.ExitCode == 0 && !string.IsNullOrEmpty(output))
+                var client = repo.GetClient(clientName);
+                if (client != null)
                 {
-                    // Parse the client spec to extract the Root
-                    var client = new Client();
-                    client.Name = clientName;
-
-                    var lines = output.Split('\n');
-                    foreach (var line in lines)
-                    {
-                        if (line.StartsWith("Root:"))
-                        {
-                            var root = line.Substring(5).Trim();
-                            client.Root = root;
-                            // Also set the root on the connection's client
-                            if (connection.Client != null)
-                            {
-                                connection.Client.Root = root;
-                            }
-                            _logger.LogDebug("Retrieved client root: {Root}", root);
-                            break;
-                        }
-                    }
-
+                    _logger.LogDebug("Retrieved client {Client} with root {Root}", clientName, client.Root);
                     return client;
                 }
                 else
                 {
-                    _logger.LogDebug("Failed to get client info: {Error}", error);
+                    _logger.LogWarning("Could not retrieve client {Client} from repository", clientName);
                     return null;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Exception getting client info");
+                _logger.LogWarning(ex, "Exception getting client info for {Client}", clientName);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Gets workspace client information including root and view mappings using P4API
+        /// </summary>
+        private WorkspaceInfo GetWorkspaceInfo(Repository repo, string clientName)
+        {
+            var workspaceInfo = new WorkspaceInfo();
+
+            try
+            {
+                var client = repo.GetClient(clientName);
+                if (client != null)
+                {
+                    workspaceInfo.ClientRoot = client.Root ?? "";
+
+                    // Parse the view map
+                    var viewLines = client.ViewMap.ToString().Split('\n');
+                    foreach (var line in viewLines)
+                    {
+                        var trimmed = line.Trim();
+                        if (!string.IsNullOrEmpty(trimmed))
+                        {
+                            var parts = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                            if (parts.Length >= 2)
+                            {
+                                var depot = parts[0];
+                                var clientPath = parts[1];
+                                workspaceInfo.ViewMappings[depot] = clientPath;
+
+                                // Also populate depot to client and client to depot mappings
+                                workspaceInfo.DepotToClientMappings[depot] = clientPath;
+                                workspaceInfo.ClientToDepotMappings[clientPath] = depot;
+                            }
+                        }
+                    }
+
+                    _logger.LogDebug("Retrieved workspace info for {Client}: Root={Root}, {MappingCount} view mappings",
+                        clientName, workspaceInfo.ClientRoot, workspaceInfo.ViewMappings.Count);
+                }
+                else
+                {
+                    _logger.LogWarning("Could not retrieve client {Client} from repository", clientName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to get workspace info for {Client}", clientName);
+            }
+
+            return workspaceInfo;
+        }
+
+        /// <summary>
+        /// Automatically discovers path mappings by comparing source and target workspace view mappings
+        /// </summary>
+        private Dictionary<string, string> DiscoverAutomaticPathMappings(WorkspaceInfo source, WorkspaceInfo target)
+        {
+            var automaticMappings = new Dictionary<string, string>();
+
+            try
+            {
+                // Get all depot prefixes from source and target
+                var sourcePrefixes = GetDepotPathPrefixes(source.ViewMappings.Keys).OrderByDescending(p => p.Length).ToList();
+                var targetPrefixes = GetDepotPathPrefixes(target.ViewMappings.Keys);
+
+                // Find matching prefixes, preferring longer (more specific) mappings
+                foreach (var sourcePrefix in sourcePrefixes)
+                {
+                    foreach (var targetPrefix in targetPrefixes)
+                    {
+                        if (sourcePrefix.Length > 2 && targetPrefix.Length > 2 && sourcePrefix != targetPrefix)
+                        {
+                            automaticMappings[sourcePrefix] = targetPrefix;
+                            _logger.LogDebug("Discovered path mapping: {Source} -> {Target}", sourcePrefix, targetPrefix);
+                            break; // Take first match for this source
+                        }
+                    }
+                }
+
+                if (automaticMappings.Count == 0)
+                {
+                    _logger.LogDebug("No automatic path mappings discovered");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to discover automatic path mappings");
+            }
+
+            return automaticMappings;
+        }
+
+        /// <summary>
+        /// Gets common depot path prefixes from a collection of depot paths
+        /// </summary>
+        private List<string> GetDepotPathPrefixes(IEnumerable<string> depotPaths)
+        {
+            var prefixes = new List<string>();
+            foreach (var path in depotPaths)
+            {
+                var parts = path.Split('/');
+                if (parts.Length >= 3)
+                {
+                    var prefix = string.Join("/", parts.Take(3)) + "/";
+                    if (!prefixes.Contains(prefix))
+                    {
+                        prefixes.Add(prefix);
+                    }
+                }
+            }
+            return prefixes;
+        }
+
+        /// <summary>
+        /// Translates a source depot path to the corresponding target depot path using path mappings
+        /// </summary>
+        private string TranslateSourcePathToTarget(string sourcePath, Dictionary<string, string> pathMappings)
+        {
+            if (pathMappings == null || pathMappings.Count == 0)
+            {
+                return sourcePath;
+            }
+
+            // Check mappings in order of decreasing key length to match more specific mappings first
+            foreach (var mapping in pathMappings.OrderByDescending(m => m.Key.Length))
+            {
+                if (sourcePath.StartsWith(mapping.Key))
+                {
+                    var translated = mapping.Value + sourcePath.Substring(mapping.Key.Length);
+                    _logger.LogDebug("Translated source path {Source} to {Target}", sourcePath, translated);
+                    return translated;
+                }
+            }
+
+            _logger.LogDebug("No translation found for source path {Source}, using as-is", sourcePath);
+            return sourcePath;
+        }
+
+        /// <summary>
+        /// Translates a target depot path to the corresponding source depot path using path mappings
+        /// </summary>
+        private string TranslateTargetPathToSource(string targetPath, Dictionary<string, string> pathMappings)
+        {
+            if (pathMappings == null || pathMappings.Count == 0)
+            {
+                return targetPath;
+            }
+
+            // Check mappings in order of decreasing key length to match more specific mappings first
+            foreach (var mapping in pathMappings.OrderByDescending(m => m.Key.Length))
+            {
+                if (targetPath.StartsWith(mapping.Value))
+                {
+                    var translated = mapping.Key + targetPath.Substring(mapping.Value.Length);
+                    _logger.LogDebug("Translated target path {Target} to {Source}", targetPath, translated);
+                    return translated;
+                }
+            }
+
+            _logger.LogDebug("No translation found for target path {Target}, using as-is", targetPath);
+            return targetPath;
+        }
+
+        /// <summary>
+        /// Translates a list of filter patterns from source to target paths using path mappings
+        /// </summary>
+        private List<string> TranslateFilterPatternsToTarget(List<string> sourcePatterns, Dictionary<string, string> pathMappings)
+        {
+            var targetPatterns = new List<string>();
+
+            foreach (var pattern in sourcePatterns)
+            {
+                var translated = TranslateSourcePathToTarget(pattern, pathMappings);
+                targetPatterns.Add(translated);
+                _logger.LogDebug("Translated filter pattern {Source} to {Target}", pattern, translated);
+            }
+
+            return targetPatterns;
         }
 
         /// <summary>
