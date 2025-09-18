@@ -206,6 +206,8 @@ namespace P4Sync
                 {
                     if (toRepo != null)
                     {
+                        changelist = new Changelist();
+                        changelist.Description = GetChangelistDescription(profile);
                         changelist = toRepo.CreateChangelist(changelist);
                         _logger.LogDebug("Changelist created: {ChangelistId}", changelist != null ? changelist.Id.ToString() : "NULL");
                     }
@@ -338,7 +340,7 @@ namespace P4Sync
                         var fileContents = GetFileContents(fromConnection, sourcePath);
                         if (toConnection != null && fileContents.Any())
                         {
-                            AddFileToTarget(toConnection, targetPath, fileContents);
+                            AddFileToTarget(toConnection, targetPath, fileContents, changelist);
                         }
                     }
                     else if (syncOp == SyncOperation.Edit)
@@ -347,7 +349,7 @@ namespace P4Sync
                         var fileContents = GetFileContents(fromConnection, sourcePath);
                         if (toConnection != null && fileContents.Any())
                         {
-                            EditFileOnTarget(toConnection, targetPath, fileContents);
+                            EditFileOnTarget(toConnection, targetPath, fileContents, changelist);
                         }
                     }
                     else if (syncOp == SyncOperation.Delete)
@@ -355,7 +357,7 @@ namespace P4Sync
                         _logger.LogInformation("File no longer exists on source, deleting from target...");
                         if (toConnection != null)
                         {
-                            DeleteFileFromTarget(toConnection, targetPath);
+                            DeleteFileFromTarget(toConnection, targetPath, changelist);
                         }
                     }
 
@@ -363,14 +365,21 @@ namespace P4Sync
                     syncOperations[relativePath] = syncOp;
                 }
 
-                // Submit the changelist if any files were modified
-                if (toRepo != null && changelist != null)
+                // Submit the changelist if any files were modified and auto-submit is enabled
+                if (toRepo != null && changelist != null && profile.AutoSubmit)
                 {
                     SubmitOrDeleteChangelist(toRepo, changelist, direction);
                 }
                 else
                 {
-                    _logger.LogDebug("Cannot submit changelist - repo or changelist is null");
+                    if (!profile.AutoSubmit)
+                    {
+                        _logger.LogDebug("Auto-submit disabled for profile {ProfileName}, changelist left pending", profile.Name);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Cannot submit changelist - repo or changelist is null, or auto-submit disabled");
+                    }
                 }
 
                 // Log sync operations summary
@@ -425,14 +434,34 @@ namespace P4Sync
         }
 
         /// <summary>
-        /// Enumeration of sync operations
+        /// Gets the changelist description for the sync profile
         /// </summary>
-        private enum SyncOperation
+        private string GetChangelistDescription(SyncProfile profile)
         {
-            Add,
-            Edit,
-            Delete,
-            Skip
+            if (!string.IsNullOrEmpty(profile.Description))
+            {
+                // Use custom description with keyword replacement
+                return ReplaceDescriptionKeywords(profile.Description, profile);
+            }
+            else
+            {
+                // Use default description
+                return ReplaceDescriptionKeywords("[Auto] P4 Sync Transfer from {source_server} {source_workspace}", profile);
+            }
+        }
+
+        /// <summary>
+        /// Replaces keywords in changelist description
+        /// </summary>
+        private string ReplaceDescriptionKeywords(string description, SyncProfile profile)
+        {
+            return description
+                .Replace("{source_server}", profile.Source?.Port ?? "unknown")
+                .Replace("{source_workspace}", profile.Source?.Workspace ?? "unknown")
+                .Replace("{target_server}", profile.Target?.Port ?? "unknown")
+                .Replace("{target_workspace}", profile.Target?.Workspace ?? "unknown")
+                .Replace("{profile_name}", profile.Name ?? "unknown")
+                .Replace("{now}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         }
 
         /// <summary>
@@ -731,7 +760,7 @@ namespace P4Sync
         /// <summary>
         /// Adds a file to target using external P4 process
         /// </summary>
-        private void AddFileToTarget(Connection connection, string depotPath, List<string> contents)
+        private void AddFileToTarget(Connection connection, string depotPath, List<string> contents, Changelist? changelist)
         {
             try
             {
@@ -772,9 +801,10 @@ namespace P4Sync
                 _logger.LogDebug("Wrote file contents to: {ClientPath}", clientPath);
 
                 // Use p4 add to add the file
+                var changelistArg = changelist != null ? $"-c {changelist.Id}" : "";
                 var p4Process = new System.Diagnostics.Process();
                 p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} add \"{clientPath}\"";
+                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} add {changelistArg} \"{clientPath}\"";
                 p4Process.StartInfo.UseShellExecute = false;
                 p4Process.StartInfo.RedirectStandardOutput = true;
                 p4Process.StartInfo.RedirectStandardError = true;
@@ -788,9 +818,6 @@ namespace P4Sync
                 if (p4Process.ExitCode == 0)
                 {
                     _logger.LogDebug("Successfully added file {DepotPath} to target", depotPath);
-
-                    // Submit the changelist
-                    SubmitChangelist(connection);
                 }
                 else
                 {
@@ -807,7 +834,7 @@ namespace P4Sync
         /// <summary>
         /// Edits a file on target using external P4 process
         /// </summary>
-        private void EditFileOnTarget(Connection connection, string depotPath, List<string> contents)
+        private void EditFileOnTarget(Connection connection, string depotPath, List<string> contents, Changelist? changelist)
         {
             try
             {
@@ -816,9 +843,10 @@ namespace P4Sync
                 var clientPath = Path.Combine(connection.Client.Root, relativePath);
 
                 // Use p4 edit to open the file for editing
+                var changelistArg = changelist != null ? $"-c {changelist.Id}" : "";
                 var p4Process = new System.Diagnostics.Process();
                 p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} edit \"{clientPath}\"";
+                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} edit {changelistArg} \"{clientPath}\"";
                 p4Process.StartInfo.UseShellExecute = false;
                 p4Process.StartInfo.RedirectStandardOutput = true;
                 p4Process.StartInfo.RedirectStandardError = true;
@@ -834,9 +862,6 @@ namespace P4Sync
                     // Now update the file contents
                     System.IO.File.WriteAllLines(clientPath, contents);
                     _logger.LogDebug("Successfully updated file {DepotPath} on target", depotPath);
-
-                    // Submit the changelist
-                    SubmitChangelist(connection);
                 }
                 else
                 {
@@ -852,7 +877,7 @@ namespace P4Sync
         /// <summary>
         /// Deletes a file from target using external P4 process
         /// </summary>
-        private void DeleteFileFromTarget(Connection connection, string depotPath)
+        private void DeleteFileFromTarget(Connection connection, string depotPath, Changelist? changelist)
         {
             try
             {
@@ -863,9 +888,10 @@ namespace P4Sync
                 _logger.LogDebug("Deleting file - Depot: {DepotPath}, Client: {ClientPath}", depotPath, clientPath);
 
                 // Use p4 delete to delete the file
+                var changelistArg = changelist != null ? $"-c {changelist.Id}" : "";
                 var p4Process = new System.Diagnostics.Process();
                 p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} delete \"{clientPath}\"";
+                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} delete {changelistArg} \"{clientPath}\"";
                 p4Process.StartInfo.UseShellExecute = false;
                 p4Process.StartInfo.RedirectStandardOutput = true;
                 p4Process.StartInfo.RedirectStandardError = true;
@@ -879,9 +905,6 @@ namespace P4Sync
                 if (p4Process.ExitCode == 0)
                 {
                     _logger.LogDebug("Successfully deleted file {DepotPath} from target", depotPath);
-
-                    // Submit the changelist
-                    SubmitChangelist(connection);
                 }
                 else
                 {
@@ -1063,8 +1086,8 @@ namespace P4Sync
                 var changelistInfo = repo.GetChangelist(changelist.Id);
                 if (changelistInfo.Files.Count > 0)
                 {
-                    var submitOptions = new SubmitCmdOptions(SubmitFilesCmdFlags.None, changelist.Id, null, changelist.Description, null);
-                    changelist.Submit(submitOptions);
+                    // Try submitting with the changelist's built-in submit method
+                    changelist.Submit(new Options());
                     _logger.LogInformation("{Direction} sync completed successfully with {FileCount} files.", direction, changelistInfo.Files.Count);
                 }
                 else

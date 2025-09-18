@@ -112,12 +112,34 @@ namespace P4Sync
         }
 
         /// <summary>
-        /// Simple structure to hold file information for external operations
+        /// Gets the changelist description for the sync profile
         /// </summary>
-        private class P4FileInfo
+        private string GetChangelistDescription(SyncProfile profile)
         {
-            public string DepotPath { get; set; } = string.Empty;
-            public int Revision { get; set; }
+            if (!string.IsNullOrEmpty(profile.Description))
+            {
+                // Use custom description with keyword replacement
+                return ReplaceDescriptionKeywords(profile.Description, profile);
+            }
+            else
+            {
+                // Use default description
+                return ReplaceDescriptionKeywords("[Auto] P4 Sync Transfer from {source_server} {source_workspace}", profile);
+            }
+        }
+
+        /// <summary>
+        /// Replaces keywords in changelist description
+        /// </summary>
+        private string ReplaceDescriptionKeywords(string description, SyncProfile profile)
+        {
+            return description
+                .Replace("{source_server}", profile.Source?.Port ?? "unknown")
+                .Replace("{source_workspace}", profile.Source?.Workspace ?? "unknown")
+                .Replace("{target_server}", profile.Target?.Port ?? "unknown")
+                .Replace("{target_workspace}", profile.Target?.Workspace ?? "unknown")
+                .Replace("{profile_name}", profile.Name ?? "unknown")
+                .Replace("{now}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         }
 
         /// <summary>
@@ -129,6 +151,15 @@ namespace P4Sync
             public Dictionary<string, string> ViewMappings { get; set; } = new Dictionary<string, string>();
             public Dictionary<string, string> DepotToClientMappings { get; set; } = new Dictionary<string, string>();
             public Dictionary<string, string> ClientToDepotMappings { get; set; } = new Dictionary<string, string>();
+        }
+
+        /// <summary>
+        /// Simple structure to hold P4 file information
+        /// </summary>
+        private class P4FileInfo
+        {
+            public string DepotPath { get; set; } = string.Empty;
+            public int Revision { get; set; }
         }
 
         /// <summary>
@@ -889,7 +920,8 @@ namespace P4Sync
                     if (!string.IsNullOrEmpty(openedOutput) && !openedOutput.Contains("no files"))
                     {
                         _logger.LogDebug("Found opened files, attempting auto-submit");
-                        var submitArgs = new List<string> { "submit", "-d", $"P4Sync {DateTime.Now:yyyy-MM-dd HH:mm:ss}" };
+                        var description = GetChangelistDescription(profile);
+                        var submitArgs = new List<string> { "submit", "-d", description };
                         var submitOutput = ExecuteP4Command(target, submitArgs);
                         _logger.LogDebug("Auto-submit result: {Output}", submitOutput);
                     }

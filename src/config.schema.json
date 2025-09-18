@@ -94,6 +94,16 @@
           "type": "boolean",
           "description": "Override the global UseExternalP4 setting for this specific profile. Allows different profiles to use different P4 operation modes.",
           "examples": [true, false]
+        },
+        "Description": {
+          "type": "string",
+          "description": "Custom description for changelists created during sync operations. Supports keyword replacement: {source_server}, {source_workspace}, {target_server}, {target_workspace}, {profile_name}, and {now} (current timestamp). If not specified, defaults to '[Auto] P4 Sync Transfer from {source_server} {source_workspace}'.",
+          "examples": [
+            "[Auto] P4 Sync Transfer from {source_server} {source_workspace}",
+            "Daily sync from {source_workspace} to production - {now}",
+            "Feature branch merge: {source_workspace} - {now}",
+            "{profile_name} sync completed at {now}"
+          ]
         }
       },
       "required": ["Name", "Source", "Target"],
