@@ -15,8 +15,8 @@ param(
 # Configuration
 $SourcePort = "localhost:1666"
 $TargetPort = "localhost:1667"
-$TestConfigPath = Join-Path $PSScriptRoot "..\src\test-config.json"
-$P4SyncBinary = Join-Path $PSScriptRoot "..\src\bin\Debug\.0\P4Sync.exe"
+$TestConfigPath = Join-Path $PSScriptRoot "..\..\src\test-config.json"
+$P4SyncBinary = Join-Path $PSScriptRoot "..\..\src\bin\Debug\net9.0\P4Sync.exe"
 
 # Test data configuration
 $TestFiles = @(
@@ -45,7 +45,7 @@ function Write-Error {
 function Build-P4SyncBinary {
     Write-TestStep "Building P4Sync binary"
 
-    $projectPath = Join-Path $PSScriptRoot "..\src\P4Sync.csproj"
+    $projectPath = Join-Path $PSScriptRoot "..\..\src\P4Sync.csproj"
     
     if (-not (Test-Path $projectPath)) {
         Write-Error "P4Sync project file not found at $projectPath"
