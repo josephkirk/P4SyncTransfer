@@ -143,7 +143,7 @@ SubmitOptions:  submitunchanged
 LineEnd:        local
 
 View:
-        //depot/... //workspace/...
+        //project/... //workspace/...
 "@
         
         $targetClientSpec | & p4 -p $TargetPort -u admin client -i 2>&1
@@ -430,13 +430,13 @@ function Test-SyncResults {
 
     # Check target server files
     Write-Host "Checking target server files..." -ForegroundColor Yellow
-    $targetFiles = & p4 -p $TargetPort files //depot/... 2>&1 | Where-Object { $_ -notmatch "- delete " }
+    $targetFiles = & p4 -p $TargetPort files //project/... 2>&1 | Where-Object { $_ -notmatch "- delete " }
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Target server has $($targetFiles.Count) files"
 
         # Verify sync filter worked correctly
-        $expectedFiles = $TestFiles | Where-Object { $_.ShouldSync } | ForEach-Object { "//depot/test-files/$($_.Name)" }
-        $unexpectedFiles = $TestFiles | Where-Object { -not $_.ShouldSync } | ForEach-Object { "//depot/test-files/$($_.Name)" }
+        $expectedFiles = $TestFiles | Where-Object { $_.ShouldSync } | ForEach-Object { "//project/test-files/$($_.Name)" }
+        $unexpectedFiles = $TestFiles | Where-Object { -not $_.ShouldSync } | ForEach-Object { "//project/test-files/$($_.Name)" }
 
         foreach ($expectedFile in $expectedFiles) {
             if ($targetFiles -match [regex]::Escape($expectedFile)) {
@@ -531,14 +531,15 @@ function Test-DeleteFileOperation {
 
         # Verify the file was deleted on target
         Write-Host "Verifying delete was propagated to target..." -ForegroundColor Yellow
-        $targetFiles = & p4 -p $TargetPort -u admin -c workspace files //depot/... 2>&1 | Where-Object { $_ -notmatch "- delete " }
+        $targetFiles = & p4 -p $TargetPort -u admin -c workspace files //project/... 2>&1 | Where-Object { $_ -notmatch "- delete " }
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Failed to list target server files after delete"
             return $false
         }
 
-        if ($targetFiles -match [regex]::Escape($fileToDelete)) {
-            Write-Error "File still exists on target server after delete sync: $fileToDelete"
+        $targetFileToCheck = "//project/test-files/readme.txt"
+        if ($targetFiles -match [regex]::Escape($targetFileToCheck)) {
+            Write-Error "File still exists on target server after delete sync: $targetFileToCheck"
             return $false
         } else {
             Write-Success "File successfully deleted from target server"
@@ -645,24 +646,26 @@ function Test-MoveRenameFileOperation {
 
         # Verify the file was moved on target
         Write-Host "Verifying move was propagated to target..." -ForegroundColor Yellow
-        $targetFiles = & p4 -p $TargetPort -u admin -c testworkspace files //depot/... 2>&1
+        $targetFiles = & p4 -p $TargetPort -u admin -c testworkspace files //project/... 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Failed to list target server files after move"
             return $false
         }
 
-        # Check that the moved file exists and original doesn't
-        $movedExists = $targetFiles -match [regex]::Escape($movedFile)
-        $originalExists = $targetFiles -match [regex]::Escape($originalFile)
+        # Check that the moved file exists and original doesn't (on target, paths are translated to //project)
+        $targetOriginalFile = "//project/test-files/move-test.txt"
+        $targetMovedFile = "//project/test-files/moved-file.txt"
+        $movedExists = $targetFiles -match [regex]::Escape($targetMovedFile)
+        $originalExists = $targetFiles -match [regex]::Escape($targetOriginalFile)
 
         if ($movedExists -and -not $originalExists) {
             Write-Success "File successfully moved on target server"
             return $true
         } elseif (-not $movedExists) {
-            Write-Error "Moved file does not exist on target server: $movedFile"
+            Write-Error "Moved file does not exist on target server: $targetMovedFile"
             return $false
         } else {
-            Write-Error "Original file still exists on target server after move: $originalFile"
+            Write-Error "Original file still exists on target server after move: $targetOriginalFile"
             return $false
         }
 

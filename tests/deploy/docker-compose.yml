@@ -35,7 +35,20 @@ services:
       - ./test-data:/test-data
     networks:
       - p4sync-network
-    command: ["p4d", "-r", "/opt/perforce", "-p", "1667"]
+    command: >
+      sh -c "
+        p4d -r /opt/perforce -p 1667 &
+        PID=\$!
+        sleep 10
+        export P4PORT=localhost:1667
+        export P4USER=admin
+        export P4PASSWD=admin123
+        p4 trust -y
+        echo \$P4PASSWD | p4 login -a
+        p4 depot -d depot
+        p4 depot -t local project
+        wait \$PID
+      "
 
   perforce-client:
     build:

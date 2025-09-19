@@ -1,4 +1,5 @@
 {
+  "UseExternalP4": true,
   "SyncProfiles": [
     {
       "Name": "TestProfile",
@@ -8,12 +9,15 @@
         "Workspace": "testworkspace"
       },
       "Target": {
-        "Port": "localhost:1666",
+        "Port": "localhost:1667",
         "User": "admin",
-        "Workspace": "testworkspace"
+        "Workspace": "workspace"
       },
-      "SyncFilter": ["//depot/src/..."],
-      "Schedule": "0 * * * *"
+      "SyncFilter": ["//depot/test-files/..."],
+      "Schedule": "0 * * * *",
+      "AutoSubmit": true,
+      "Description": "[Test] P4Sync end-to-end test from {source_workspace} to {target_workspace} - {now}",
+      "UseExternalP4": true
     }
   ]
 }
