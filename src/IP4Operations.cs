@@ -21,7 +21,7 @@ namespace P4Sync
         /// <param name="connection">Connection for authenticated operations</param>
         /// <param name="filterPatterns">Filter patterns to apply</param>
         /// <returns>List of filtered files</returns>
-        List<FileMetaData> GetFilteredFiles(Connection connection, List<string> filterPatterns);
+        List<FileMetaData> GetFilteredFiles(Repository repository, List<string> filterPatterns);
 
         /// <summary>
         /// Submits a changelist if it has files, otherwise deletes it
