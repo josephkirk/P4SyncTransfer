@@ -860,14 +860,14 @@ namespace P4Sync
 
                     processedFiles.Add(sourceDepotPath);
 
-                    // Get file content from source
-                    var printArgs = new List<string> { "print", "-q", sourceDepotPath };
-                    var content = ExecuteP4Command(source, printArgs);
+                    // Sync the source file to source client workspace
+                    SyncFileToClientExternal(source, sourceDepotPath);
 
-                    if (string.IsNullOrEmpty(content) || content.Contains("no such file"))
+                    // Get source client file path
+                    var sourceClientFilePath = ResolveDepotPathToClientFile(source, sourceDepotPath);
+                    if (string.IsNullOrEmpty(sourceClientFilePath))
                     {
-                        _logger.LogDebug("Could not get content for {DepotPath} from source, marking as delete operation", sourceDepotPath);
-                        deletedFiles.Add(sourceDepotPath);
+                        _logger.LogWarning("Could not resolve source depot path {SourceDepotPath} to client file path", sourceDepotPath);
                         continue;
                     }
 
@@ -889,11 +889,11 @@ namespace P4Sync
                         _logger.LogDebug("Opened new file for add: {TargetDepotPath}", targetDepotPath);
                     }
 
-                    // Write the content to the local file system
+                    // Copy the file from source client to target client
                     var targetClientFilePath = ResolveDepotPathToClientFile(target, targetDepotPath);
                     if (!string.IsNullOrEmpty(targetClientFilePath))
                     {
-                        // Ensure the directory exists
+                        // Ensure the target directory exists
                         var directory = Path.GetDirectoryName(targetClientFilePath);
                         if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                         {
@@ -901,13 +901,13 @@ namespace P4Sync
                             _logger.LogDebug("Created directory: {Directory}", directory);
                         }
 
-                        // Write the content to the file
-                        System.IO.File.WriteAllText(targetClientFilePath, content);
-                        _logger.LogDebug("Wrote content to local file: {LocalFilePath} ({ContentLength} chars)", targetClientFilePath, content.Length);
+                        // Copy file from source client to target client
+                        System.IO.File.Copy(sourceClientFilePath, targetClientFilePath, true);
+                        _logger.LogDebug("Copied file from {Source} to {Target}", sourceClientFilePath, targetClientFilePath);
                     }
                     else
                     {
-                        _logger.LogWarning("Could not resolve target depot path {TargetDepotPath} to client file path, content not written", targetDepotPath);
+                        _logger.LogWarning("Could not resolve target depot path {TargetDepotPath} to client file path", targetDepotPath);
                     }
                 }
 
@@ -1085,6 +1085,23 @@ namespace P4Sync
             {
                 _logger.LogWarning(ex, "Error getting client root for {Workspace}", connection.Workspace);
                 return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Syncs a file from depot to client workspace using p4 sync
+        /// </summary>
+        private void SyncFileToClientExternal(P4Connection connection, string depotPath)
+        {
+            try
+            {
+                var args = new List<string> { "sync", depotPath };
+                var output = ExecuteP4Command(connection, args);
+                _logger.LogDebug("Synced file {DepotPath} to client", depotPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Exception syncing file {DepotPath}", depotPath);
             }
         }
 

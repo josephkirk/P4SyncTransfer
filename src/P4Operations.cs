@@ -323,19 +323,17 @@ namespace P4Sync
                     if (syncOp == SyncOperation.Add)
                     {
                         _logger.LogInformation("File does not exist on target, adding...");
-                        var fileContents = GetFileContents(fromConnection, sourcePath);
-                        if (toConnection != null && fileContents.Any())
+                        if (toConnection != null)
                         {
-                            AddFileToTarget(toConnection, targetPath, fileContents, changelist);
+                            AddFileToTarget(fromConnection, fromClient, toConnection, toClient, sourcePath, targetPath, changelist);
                         }
                     }
                     else if (syncOp == SyncOperation.Edit)
                     {
                         _logger.LogInformation("File is different, updating...");
-                        var fileContents = GetFileContents(fromConnection, sourcePath);
-                        if (toConnection != null && fileContents.Any())
+                        if (toConnection != null)
                         {
-                            EditFileOnTarget(toConnection, targetPath, fileContents, changelist);
+                            EditFileOnTarget(fromConnection, fromClient, toConnection, toClient, sourcePath, targetPath, changelist);
                         }
                     }
                     else if (syncOp == SyncOperation.Delete)
@@ -714,6 +712,41 @@ namespace P4Sync
         }
 
         /// <summary>
+        /// Syncs a file from depot to client workspace using external P4 process
+        /// </summary>
+        private void SyncFileToClient(Connection connection, string depotPath)
+        {
+            try
+            {
+                var p4Process = new System.Diagnostics.Process();
+                p4Process.StartInfo.FileName = "p4";
+                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} sync \"{depotPath}\"";
+                p4Process.StartInfo.UseShellExecute = false;
+                p4Process.StartInfo.RedirectStandardOutput = true;
+                p4Process.StartInfo.RedirectStandardError = true;
+                p4Process.StartInfo.CreateNoWindow = true;
+
+                p4Process.Start();
+                var output = p4Process.StandardOutput.ReadToEnd();
+                var error = p4Process.StandardError.ReadToEnd();
+                p4Process.WaitForExit();
+
+                if (p4Process.ExitCode == 0)
+                {
+                    _logger.LogDebug("Successfully synced file {DepotPath} to client", depotPath);
+                }
+                else
+                {
+                    _logger.LogDebug("Failed to sync file {DepotPath}: {Error}", depotPath, error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Exception syncing file {DepotPath}", depotPath);
+            }
+        }
+
+        /// <summary>
         /// Checks if a file exists on target using external P4 process
         /// </summary>
         private bool FileExistsOnTarget(Connection connection, string depotPath)
@@ -744,53 +777,64 @@ namespace P4Sync
         }
 
         /// <summary>
-        /// Adds a file to target using external P4 process
+        /// Adds a file to target by copying from source client to target client
         /// </summary>
-        private void AddFileToTarget(Connection connection, string depotPath, List<string> contents, Changelist? changelist)
+        private void AddFileToTarget(Connection fromConnection, Client fromClient, Connection toConnection, Client toClient, string sourcePath, string targetPath, Changelist? changelist)
         {
+            if (fromClient == null || toClient == null)
+            {
+                _logger.LogDebug("Cannot add file - source or target client is null");
+                return;
+            }
+
             try
             {
-                // Create the file in the client workspace first
-                var relativePath = GetRelativePath(depotPath, connection.Client.Root);
-                var clientPath = Path.Combine(connection.Client.Root, relativePath);
+                // Sync the source file to source client workspace
+                SyncFileToClient(fromConnection, sourcePath);
 
-                _logger.LogDebug("Adding file - Depot: {DepotPath}, Client: {ClientPath}, Root: {ClientRoot}", depotPath, clientPath, connection.Client.Root);
+                // Get client paths
+                var sourceRelativePath = GetRelativePath(sourcePath, fromClient.Root);
+                var sourceClientPath = Path.Combine(fromClient.Root, sourceRelativePath);
+                var targetRelativePath = GetRelativePath(targetPath, toClient.Root);
+                var targetClientPath = Path.Combine(toClient.Root, targetRelativePath);
 
-                // Ensure directory exists
-                var directory = Path.GetDirectoryName(clientPath);
+                _logger.LogDebug("Copying file - Source: {SourcePath}, Target: {TargetPath}", sourceClientPath, targetClientPath);
+
+                // Ensure target directory exists
+                var directory = Path.GetDirectoryName(targetClientPath);
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
                     Directory.CreateDirectory(directory);
                     _logger.LogDebug("Created directory: {Directory}", directory);
                 }
 
-                // Check if file already exists and try to make it writable if needed
-                if (System.IO.File.Exists(clientPath))
+                // Check if target file already exists and handle it
+                if (System.IO.File.Exists(targetClientPath))
                 {
-                    var fileInfo = new FileInfo(clientPath);
+                    var fileInfo = new FileInfo(targetClientPath);
                     if (fileInfo.IsReadOnly)
                     {
                         // File is read-only (likely under Perforce control), make it writable
                         fileInfo.IsReadOnly = false;
-                        _logger.LogDebug("Made read-only file writable: {ClientPath}", clientPath);
+                        _logger.LogDebug("Made read-only file writable: {TargetPath}", targetClientPath);
                     }
                     else
                     {
                         // File exists and is writable, delete it
-                        System.IO.File.Delete(clientPath);
-                        _logger.LogDebug("Deleted existing file: {ClientPath}", clientPath);
+                        System.IO.File.Delete(targetClientPath);
+                        _logger.LogDebug("Deleted existing file: {TargetPath}", targetClientPath);
                     }
                 }
 
-                // Write contents to client workspace
-                System.IO.File.WriteAllLines(clientPath, contents);
-                _logger.LogDebug("Wrote file contents to: {ClientPath}", clientPath);
+                // Copy file from source client to target client
+                System.IO.File.Copy(sourceClientPath, targetClientPath, true);
+                _logger.LogDebug("Copied file from {Source} to {Target}", sourceClientPath, targetClientPath);
 
                 // Use p4 add to add the file
                 var changelistArg = changelist != null ? $"-c {changelist.Id}" : "";
                 var p4Process = new System.Diagnostics.Process();
                 p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} add {changelistArg} \"{clientPath}\"";
+                p4Process.StartInfo.Arguments = $"-p {toConnection.Server.Address.Uri} -u {toConnection.UserName} -c {toConnection.Client.Name} add {changelistArg} \"{targetClientPath}\"";
                 p4Process.StartInfo.UseShellExecute = false;
                 p4Process.StartInfo.RedirectStandardOutput = true;
                 p4Process.StartInfo.RedirectStandardError = true;
@@ -803,36 +847,47 @@ namespace P4Sync
 
                 if (p4Process.ExitCode == 0)
                 {
-                    _logger.LogDebug("Successfully added file {DepotPath} to target", depotPath);
+                    _logger.LogDebug("Successfully added file {TargetPath} to target", targetPath);
                 }
                 else
                 {
-                    _logger.LogDebug("Failed to add file {DepotPath}: {Error}", depotPath, error);
+                    _logger.LogDebug("Failed to add file {TargetPath}: {Error}", targetPath, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Exception adding file {DepotPath}", depotPath);
+                _logger.LogDebug(ex, "Exception adding file {TargetPath}", targetPath);
                 _logger.LogDebug("Stack trace: {StackTrace}", ex.StackTrace);
             }
         }
 
         /// <summary>
-        /// Edits a file on target using external P4 process
+        /// Edits a file on target by copying from source client to target client
         /// </summary>
-        private void EditFileOnTarget(Connection connection, string depotPath, List<string> contents, Changelist? changelist)
+        private void EditFileOnTarget(Connection fromConnection, Client fromClient, Connection toConnection, Client toClient, string sourcePath, string targetPath, Changelist? changelist)
         {
+            if (fromClient == null || toClient == null)
+            {
+                _logger.LogDebug("Cannot edit file - source or target client is null");
+                return;
+            }
+
             try
             {
-                // Get the relative path and client path
-                var relativePath = GetRelativePath(depotPath, connection.Client.Root);
-                var clientPath = Path.Combine(connection.Client.Root, relativePath);
+                // Sync the source file to source client workspace
+                SyncFileToClient(fromConnection, sourcePath);
+
+                // Get client paths
+                var sourceRelativePath = GetRelativePath(sourcePath, fromClient.Root);
+                var sourceClientPath = Path.Combine(fromClient.Root, sourceRelativePath);
+                var targetRelativePath = GetRelativePath(targetPath, toClient.Root);
+                var targetClientPath = Path.Combine(toClient.Root, targetRelativePath);
 
                 // Use p4 edit to open the file for editing
                 var changelistArg = changelist != null ? $"-c {changelist.Id}" : "";
                 var p4Process = new System.Diagnostics.Process();
                 p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} edit {changelistArg} \"{clientPath}\"";
+                p4Process.StartInfo.Arguments = $"-p {toConnection.Server.Address.Uri} -u {toConnection.UserName} -c {toConnection.Client.Name} edit {changelistArg} \"{targetClientPath}\"";
                 p4Process.StartInfo.UseShellExecute = false;
                 p4Process.StartInfo.RedirectStandardOutput = true;
                 p4Process.StartInfo.RedirectStandardError = true;
@@ -845,18 +900,18 @@ namespace P4Sync
 
                 if (p4Process.ExitCode == 0)
                 {
-                    // Now update the file contents
-                    System.IO.File.WriteAllLines(clientPath, contents);
-                    _logger.LogDebug("Successfully updated file {DepotPath} on target", depotPath);
+                    // Copy file from source client to target client (overwrites the existing file)
+                    System.IO.File.Copy(sourceClientPath, targetClientPath, true);
+                    _logger.LogDebug("Successfully updated file {TargetPath} on target", targetPath);
                 }
                 else
                 {
-                    _logger.LogDebug("Failed to edit file {DepotPath}: {Error}", depotPath, error);
+                    _logger.LogDebug("Failed to edit file {TargetPath}: {Error}", targetPath, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Exception editing file {DepotPath}", depotPath);
+                _logger.LogDebug(ex, "Exception editing file {TargetPath}", targetPath);
             }
         }
 
