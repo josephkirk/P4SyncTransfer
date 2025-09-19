@@ -1,0 +1,592 @@
+[
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/Animations/CascadeurTrainning/A_Punch_1.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Animations\\CascadeurTrainning\\A_Punch_1.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Animations\\CascadeurTrainning\\A_Punch_1.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 1,
+        "HeadChange": 1090,
+        "HeadRev": 1,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-07-25T10:42:33Z",
+        "HeadModTime": "2025-07-24T11:07:54Z",
+        "MovedRev": -1,
+        "HaveRev": -1,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": true
+    },
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/Animations/CascadeurTrainning/A_Punch_2.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Animations\\CascadeurTrainning\\A_Punch_2.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Animations\\CascadeurTrainning\\A_Punch_2.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 1,
+        "HeadChange": 1090,
+        "HeadRev": 1,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-07-25T10:42:33Z",
+        "HeadModTime": "2025-07-24T11:04:26Z",
+        "MovedRev": -1,
+        "HaveRev": -1,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": true
+    },
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/Animations/CascadeurTrainning/A_Walk.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Animations\\CascadeurTrainning\\A_Walk.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Animations\\CascadeurTrainning\\A_Walk.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 1,
+        "HeadChange": 1090,
+        "HeadRev": 1,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-07-25T10:42:33Z",
+        "HeadModTime": "2025-07-24T08:49:59Z",
+        "MovedRev": -1,
+        "HaveRev": -1,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": true
+    },
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/Animations/CascadeurTrainning/A_WaveingHand.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Animations\\CascadeurTrainning\\A_WaveingHand.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Animations\\CascadeurTrainning\\A_WaveingHand.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 1,
+        "HeadChange": 1090,
+        "HeadRev": 1,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-07-25T10:42:33Z",
+        "HeadModTime": "2025-07-17T10:19:24Z",
+        "MovedRev": -1,
+        "HaveRev": -1,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": true
+    },
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/Characters/chappie-blender-rig-free/source/ChappieHD.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Characters\\chappie-blender-rig-free\\source\\ChappieHD.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\Characters\\chappie-blender-rig-free\\source\\ChappieHD.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 3,
+        "HeadChange": 836,
+        "HeadRev": 2,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-07-11T08:32:04Z",
+        "HeadModTime": "2025-07-11T08:30:00Z",
+        "MovedRev": -1,
+        "HaveRev": 2,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": false
+    },
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/SPD2/Characters/COP/FBX/SKM_COP.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Characters\\COP\\FBX\\SKM_COP.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Characters\\COP\\FBX\\SKM_COP.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 1,
+        "HeadChange": 1404,
+        "HeadRev": 1,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-08-25T08:40:18Z",
+        "HeadModTime": "2025-08-25T06:17:30Z",
+        "MovedRev": -1,
+        "HaveRev": 1,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": false
+    },
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/SPD2/Characters/Dog/FBX/SKM_Dog.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Characters\\Dog\\FBX\\SKM_Dog.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Characters\\Dog\\FBX\\SKM_Dog.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 1,
+        "HeadChange": 1404,
+        "HeadRev": 1,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-08-25T08:40:18Z",
+        "HeadModTime": "2025-08-25T06:54:03Z",
+        "MovedRev": -1,
+        "HaveRev": 1,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": false
+    },
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/SPD2/Characters/Sparkie/FBX/SKM_Sparkie.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Characters\\Sparkie\\FBX\\SKM_Sparkie.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Characters\\Sparkie\\FBX\\SKM_Sparkie.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 1,
+        "HeadChange": 1404,
+        "HeadRev": 1,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-08-25T08:40:18Z",
+        "HeadModTime": "2025-08-25T06:58:35Z",
+        "MovedRev": -1,
+        "HaveRev": 1,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": false
+    },
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/SPD2/Cinematics/Blockout/FBX/A_CineCamera_BLOCKOUT.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Cinematics\\Blockout\\FBX\\A_CineCamera_BLOCKOUT.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Cinematics\\Blockout\\FBX\\A_CineCamera_BLOCKOUT.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 3,
+        "HeadChange": 1433,
+        "HeadRev": 2,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-08-26T07:54:25Z",
+        "HeadModTime": "2025-08-26T07:24:01Z",
+        "MovedRev": -1,
+        "HaveRev": 1,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": true
+    },
+    {
+        "DepotPath": {
+            "Path": "//InternalProjects/SPD2/Source_Files/SPD2/Cinematics/Blockout/FBX/SPARKIE_BLOCKOUT.fbx"
+        },
+        "IsInDepot": true,
+        "LocalPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Cinematics\\Blockout\\FBX\\SPARKIE_BLOCKOUT.fbx"
+        },
+        "ClientPath": {
+            "Path": "F:\\Projects\\SPD2\\Source_Files\\SPD2\\Cinematics\\Blockout\\FBX\\SPARKIE_BLOCKOUT.fbx"
+        },
+        "IsInClient": true,
+        "MovedFile": null,
+        "IsMapped": true,
+        "Shelved": false,
+        "HeadAction": 3,
+        "HeadChange": 1388,
+        "HeadRev": 2,
+        "HeadType": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "HeadTime": "2025-08-22T12:12:58Z",
+        "HeadModTime": "2025-08-18T09:33:59Z",
+        "MovedRev": -1,
+        "HaveRev": 2,
+        "Desc": null,
+        "Digest": null,
+        "FileSize": -1,
+        "Action": 0,
+        "Type": {
+            "BaseType": 2,
+            "Modifiers": 32,
+            "StoredRevs": 0
+        },
+        "ActionOwner": null,
+        "Change": -1,
+        "Resolved": false,
+        "Unresolved": false,
+        "Reresolvable": false,
+        "OtherOpen": 0,
+        "OtherOpenUserClients": null,
+        "OtherLock": false,
+        "OtherLockUserClients": null,
+        "OtherActions": null,
+        "OtherChanges": null,
+        "OurLock": false,
+        "ResolveRecords": null,
+        "Attributes": {},
+        "AttributesProp": {},
+        "AttributeDigests": {},
+        "OpenAttributes": {},
+        "OpenAttributesProp": {},
+        "TotalFileCount": -1,
+        "OtherUsers": null,
+        "Directory": null,
+        "IsStale": false
+    }
+]

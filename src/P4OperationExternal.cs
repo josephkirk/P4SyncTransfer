@@ -1168,7 +1168,7 @@ namespace P4Sync
         /// <summary>
         /// Gets filtered files based on filter patterns (interface implementation)
         /// </summary>
-        public List<FileMetaData> GetFilteredFiles(Connection connection, List<string> filterPatterns)
+        public List<FileMetaData> GetFilteredFiles(Repository repository, List<string> filterPatterns)
         {
             // For external implementation, we need to convert Connection to P4Connection
             // This is a limitation - the interface assumes P4 .NET API Connection

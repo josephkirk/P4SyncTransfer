@@ -215,7 +215,7 @@ namespace P4Sync
                 var sourceFilteredFiles = new List<FileMetaData>();
                 if (fromRepo != null)
                 {
-                    sourceFilteredFiles = GetFilteredFiles(fromConnection, filterPatterns);
+                    sourceFilteredFiles = GetFilteredFiles(fromRepo, filterPatterns);
                 }
                 else
                 {
@@ -227,7 +227,7 @@ namespace P4Sync
                 var targetFilteredFiles = new List<FileMetaData>();
                 if (toRepo != null)
                 {
-                    targetFilteredFiles = GetFilteredFiles(toConnection, targetFilterPatterns);
+                    targetFilteredFiles = GetFilteredFiles(toRepo, targetFilterPatterns);
                 }
                 else
                 {
@@ -259,12 +259,10 @@ namespace P4Sync
                     }
                     else
                     {
-                        // File exists in both - check if it needs updating
-                        var targetFile = targetFileDict[targetPath];
-                        var sourceContents = GetFileContents(fromConnection, sourcePath);
-                        var targetContents = GetFileContents(toConnection, targetPath);
-                        
-                        if (!sourceContents.SequenceEqual(targetContents))
+                        // File exists in both - check if it needs updating using hash comparison
+                        FileComparer comparer = new FileComparer(_logger);
+
+                        if (!comparer.AreFilesIdentical(sourcePath, targetPath))
                         {
                             allOperations[targetPath] = SyncOperation.Edit;
                             _logger.LogDebug("File {SourcePath} (translated to {TargetPath}) will be EDITED on target", sourcePath, targetPath);
@@ -665,79 +663,22 @@ namespace P4Sync
         }
 
         /// <summary>
-        /// Gets file contents using external P4 process
-        /// </summary>
-        private List<string> GetFileContents(Connection connection, string depotPath)
-        {
-            try
-            {
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} print \"{depotPath}\"";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
-
-                p4Process.Start();
-                var output = p4Process.StandardOutput.ReadToEnd();
-                var error = p4Process.StandardError.ReadToEnd();
-                p4Process.WaitForExit();
-
-                if (p4Process.ExitCode == 0 && !string.IsNullOrEmpty(output))
-                {
-                    // Parse P4 print output - skip the header line
-                    var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                    var contents = new List<string>();
-
-                    // Skip the first line which contains the file info
-                    for (int i = 1; i < lines.Length; i++)
-                    {
-                        contents.Add(lines[i]);
-                    }
-
-                    return contents;
-                }
-                else
-                {
-                    _logger.LogDebug("Failed to get file contents for {DepotPath}: {Error}", depotPath, error);
-                    return new List<string>();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Exception getting file contents for {DepotPath}", depotPath);
-                return new List<string>();
-            }
-        }
-
-        /// <summary>
         /// Syncs a file from depot to client workspace using external P4 process
         /// </summary>
-        private void SyncFileToClient(Connection connection, string depotPath)
+        private void SyncFileToClient(Connection connection, string depotPath, SyncFilesCmdFlags syncFilesCmdFlags = SyncFilesCmdFlags.None)
         {
             try
             {
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} sync \"{depotPath}\"";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
 
-                p4Process.Start();
-                var output = p4Process.StandardOutput.ReadToEnd();
-                var error = p4Process.StandardError.ReadToEnd();
-                p4Process.WaitForExit();
+                var syncedfiles = connection.Client.SyncFiles( new SyncFilesCmdOptions(syncFilesCmdFlags), new FileSpec(new DepotPath(depotPath)));
 
-                if (p4Process.ExitCode == 0)
+                if (syncedfiles != null && syncedfiles.Count > 0)
                 {
                     _logger.LogDebug("Successfully synced file {DepotPath} to client", depotPath);
                 }
                 else
                 {
-                    _logger.LogDebug("Failed to sync file {DepotPath}: {Error}", depotPath, error);
+                    _logger.LogDebug("No files were synced for {DepotPath}", depotPath);
                 }
             }
             catch (Exception ex)
@@ -749,25 +690,17 @@ namespace P4Sync
         /// <summary>
         /// Checks if a file exists on target using external P4 process
         /// </summary>
-        private bool FileExistsOnTarget(Connection connection, string depotPath)
+        private bool FileExistsOnTarget(Repository repo, string depotPath)
         {
             try
             {
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} files \"{depotPath}\"";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
-
-                p4Process.Start();
-                var output = p4Process.StandardOutput.ReadToEnd();
-                var error = p4Process.StandardError.ReadToEnd();
-                p4Process.WaitForExit();
-
-                // If the file exists, p4 files will return output, if not, it will have an error
-                return p4Process.ExitCode == 0 && !string.IsNullOrEmpty(output) && !error.Contains("no such file");
+                var fileSpecs = repo.GetFileMetaData(new Options(), new FileSpec(new DepotPath(depotPath)));
+                if (fileSpecs == null || fileSpecs.Count == 0)
+                {
+                    _logger.LogDebug("File {DepotPath} does not exist on target", depotPath);
+                    return false;
+                }
+                return fileSpecs[0].HeadRev > 0;
             }
             catch (Exception ex)
             {
@@ -830,28 +763,15 @@ namespace P4Sync
                 System.IO.File.Copy(sourceClientPath, targetClientPath, true);
                 _logger.LogDebug("Copied file from {Source} to {Target}", sourceClientPath, targetClientPath);
 
-                // Use p4 add to add the file
-                var changelistArg = changelist != null ? $"-c {changelist.Id}" : "";
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {toConnection.Server.Address.Uri} -u {toConnection.UserName} -c {toConnection.Client.Name} add {changelistArg} \"{targetClientPath}\"";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
+                var addfiles = toConnection.Client.AddFiles( new Options(AddFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetClientPath)));
 
-                p4Process.Start();
-                var output = p4Process.StandardOutput.ReadToEnd();
-                var error = p4Process.StandardError.ReadToEnd();
-                p4Process.WaitForExit();
-
-                if (p4Process.ExitCode == 0)
+                if (addfiles.Count > 0)
                 {
                     _logger.LogDebug("Successfully added file {TargetPath} to target", targetPath);
                 }
                 else
                 {
-                    _logger.LogDebug("Failed to add file {TargetPath}: {Error}", targetPath, error);
+                    _logger.LogDebug("Failed to add file {TargetPath} to target", targetPath);
                 }
             }
             catch (Exception ex)
@@ -883,22 +803,9 @@ namespace P4Sync
                 var targetRelativePath = GetRelativePath(targetPath, toClient.Root);
                 var targetClientPath = Path.Combine(toClient.Root, targetRelativePath);
 
-                // Use p4 edit to open the file for editing
-                var changelistArg = changelist != null ? $"-c {changelist.Id}" : "";
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {toConnection.Server.Address.Uri} -u {toConnection.UserName} -c {toConnection.Client.Name} edit {changelistArg} \"{targetClientPath}\"";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
+                var editFiles = toConnection.Client.EditFiles( new Options(EditFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetClientPath)));
 
-                p4Process.Start();
-                var output = p4Process.StandardOutput.ReadToEnd();
-                var error = p4Process.StandardError.ReadToEnd();
-                p4Process.WaitForExit();
-
-                if (p4Process.ExitCode == 0)
+                if (editFiles.Count > 0)
                 {
                     // Copy file from source client to target client (overwrites the existing file)
                     System.IO.File.Copy(sourceClientPath, targetClientPath, true);
@@ -906,7 +813,7 @@ namespace P4Sync
                 }
                 else
                 {
-                    _logger.LogDebug("Failed to edit file {TargetPath}: {Error}", targetPath, error);
+                    _logger.LogDebug("Failed to edit file {TargetPath} on target", targetPath);
                 }
             }
             catch (Exception ex)
@@ -928,28 +835,15 @@ namespace P4Sync
 
                 _logger.LogDebug("Deleting file - Depot: {DepotPath}, Client: {ClientPath}", depotPath, clientPath);
 
-                // Use p4 delete to delete the file
-                var changelistArg = changelist != null ? $"-c {changelist.Id}" : "";
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} delete {changelistArg} \"{clientPath}\"";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
+                var deletedFiles = connection.Client.DeleteFiles( new DeleteFilesCmdOptions(DeleteFilesCmdFlags.None, changelist.Id), new FileSpec(new LocalPath(clientPath)));
 
-                p4Process.Start();
-                var output = p4Process.StandardOutput.ReadToEnd();
-                var error = p4Process.StandardError.ReadToEnd();
-                p4Process.WaitForExit();
-
-                if (p4Process.ExitCode == 0)
+                if (deletedFiles.Count > 0)
                 {
                     _logger.LogDebug("Successfully deleted file {DepotPath} from target", depotPath);
                 }
                 else
                 {
-                    _logger.LogDebug("Failed to delete file {DepotPath}: {Error}", depotPath, error);
+                    _logger.LogDebug("Failed to delete file {DepotPath} from target", depotPath);
                 }
             }
             catch (Exception ex)
@@ -958,40 +852,6 @@ namespace P4Sync
             }
         }
 
-        /// <summary>
-        /// Submits pending changelist using external P4 process
-        /// </summary>
-        private void SubmitChangelist(Connection connection)
-        {
-            try
-            {
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} submit -d \"P4Sync automated sync\"";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
-
-                p4Process.Start();
-                var output = p4Process.StandardOutput.ReadToEnd();
-                var error = p4Process.StandardError.ReadToEnd();
-                p4Process.WaitForExit();
-
-                if (p4Process.ExitCode == 0)
-                {
-                    _logger.LogDebug("Successfully submitted changelist");
-                }
-                else
-                {
-                    _logger.LogDebug("Failed to submit changelist: {Error}", error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Exception submitting changelist");
-            }
-        }
 
         /// <summary>
         /// Gets filtered files based on filter patterns using server-side filtering
@@ -999,116 +859,30 @@ namespace P4Sync
         /// <param name="connection">Connection for authenticated operations</param>
         /// <param name="filterPatterns">Filter patterns to apply</param>
         /// <returns>List of filtered files</returns>
-        public List<FileMetaData> GetFilteredFiles(Connection connection, List<string> filterPatterns)
+        public List<FileMetaData> GetFilteredFiles(Repository repository, List<string> filterPatterns)
         {
             var filteredFiles = new List<FileMetaData>();
 
-            try
+            //for each filter pattern, run getFilemetaData and store results
+            foreach (var pattern in filterPatterns)
             {
-                _logger.LogDebug("Getting filtered files using server-side filtering with {PatternCount} patterns", filterPatterns.Count);
-
-                // Use p4 fstat with filter patterns for efficient server-side filtering
-                // This avoids getting all depot files and then filtering client-side
-                var fstatArgs = new List<string> { "fstat" };
-                fstatArgs.AddRange(filterPatterns);
-
-                _logger.LogDebug("Executing p4 fstat with patterns: {patterns}", string.Join(" ", filterPatterns));
-
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} {string.Join(" ", fstatArgs)}";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
-
                 try
                 {
-                    p4Process.Start();
-                    var output = p4Process.StandardOutput.ReadToEnd();
-                    var error = p4Process.StandardError.ReadToEnd();
-                    p4Process.WaitForExit();
-
-                    if (p4Process.ExitCode == 0 && !string.IsNullOrEmpty(output))
+                    var fileMetaDatas = repository.GetFileMetaData(new Options(), new FileSpec(new DepotPath(pattern)));
+                    if (fileMetaDatas != null && fileMetaDatas.Count > 0)
                     {
-                        _logger.LogDebug("P4 fstat command succeeded");
-                        
-                        // Parse fstat output into FileMetaData objects
-                        var allFiles = ParseP4FstatOutput(output);
-                        filteredFiles.AddRange(allFiles);
-                        
-                        _logger.LogDebug("Found {FileCount} files matching filter patterns", filteredFiles.Count);
+                        filteredFiles.AddRange(fileMetaDatas);
+                        _logger.LogDebug("Retrieved {FileCount} files for pattern {Pattern}", fileMetaDatas.Count, pattern);
                     }
                     else
                     {
-                        _logger.LogWarning("P4 fstat command failed, falling back to files command");
-                        // Fallback to p4 files if fstat fails
-                        filteredFiles = GetFilteredFilesFallback(connection, filterPatterns);
+                        _logger.LogDebug("No files found for pattern {Pattern}", pattern);
                     }
                 }
-                catch (Exception procEx)
+                catch (Exception ex)
                 {
-                    _logger.LogWarning(procEx, "Exception running P4 fstat process, trying fallback");
-                    // Try fallback method
-                    try
-                    {
-                        filteredFiles = GetFilteredFilesFallback(connection, filterPatterns);
-                    }
-                    catch (Exception fallbackEx)
-                    {
-                        _logger.LogError(fallbackEx, "Fallback method also failed");
-                    }
+                    _logger.LogError(ex, "Error getting filtered files for pattern {Pattern}", pattern);
                 }
-
-                _logger.LogInformation("Retrieved {FileCount} files matching filter patterns", filteredFiles.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting filtered files");
-            }
-
-            return filteredFiles;
-        }
-
-        /// <summary>
-        /// Fallback method using p4 files command (less efficient but more compatible)
-        /// </summary>
-        private List<FileMetaData> GetFilteredFilesFallback(Connection connection, List<string> filterPatterns)
-        {
-            var filteredFiles = new List<FileMetaData>();
-
-            try
-            {
-                // Use p4 files with filter patterns
-                var filesArgs = new List<string> { "files" };
-                filesArgs.AddRange(filterPatterns);
-
-                var p4Process = new System.Diagnostics.Process();
-                p4Process.StartInfo.FileName = "p4";
-                p4Process.StartInfo.Arguments = $"-p {connection.Server.Address.Uri} -u {connection.UserName} -c {connection.Client.Name} {string.Join(" ", filesArgs)}";
-                p4Process.StartInfo.UseShellExecute = false;
-                p4Process.StartInfo.RedirectStandardOutput = true;
-                p4Process.StartInfo.RedirectStandardError = true;
-                p4Process.StartInfo.CreateNoWindow = true;
-
-                p4Process.Start();
-                var output = p4Process.StandardOutput.ReadToEnd();
-                p4Process.WaitForExit();
-
-                if (p4Process.ExitCode == 0 && !string.IsNullOrEmpty(output))
-                {
-                    var allFiles = ParseP4FilesOutput(output);
-                    filteredFiles.AddRange(allFiles);
-                    _logger.LogDebug("Retrieved {FileCount} files using fallback files command", filteredFiles.Count);
-                }
-                else
-                {
-                    _logger.LogWarning("P4 files fallback command also failed");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in fallback method for getting filtered files");
             }
 
             return filteredFiles;
@@ -1143,165 +917,6 @@ namespace P4Sync
             }
         }
 
-        /// <summary>
-        /// Parses the output of 'p4 fstat' command into FileMetaData objects
-        /// </summary>
-        private List<FileMetaData> ParseP4FstatOutput(string output)
-        {
-            var files = new List<FileMetaData>();
-            var currentFile = new Dictionary<string, string>();
 
-            if (string.IsNullOrEmpty(output))
-            {
-                return files;
-            }
-
-            // Don't remove empty entries as they are used to separate file records
-            var lines = output.Split('\n');
-
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    // End of current file record
-                    if (currentFile.Any())
-                    {
-                        var fileInfo = CreateFileMetaDataFromFstat(currentFile);
-                        if (fileInfo != null)
-                        {
-                            files.Add(fileInfo);
-                        }
-                        currentFile.Clear();
-                    }
-                    continue;
-                }
-
-                // Parse fstat output format: "... key value"
-                var trimmedLine = line.Trim();
-                if (trimmedLine.StartsWith("... "))
-                {
-                    var keyValuePart = trimmedLine.Substring(4); // Remove "... "
-                    
-                    // Split on first space to separate key from value
-                    var spaceIndex = keyValuePart.IndexOf(' ');
-                    if (spaceIndex > 0)
-                    {
-                        var key = keyValuePart.Substring(0, spaceIndex);
-                        var value = keyValuePart.Substring(spaceIndex + 1).Trim();
-                        currentFile[key] = value;
-                    }
-                    else
-                    {
-                        // Some fields like "isMapped" have no value
-                        currentFile[keyValuePart] = "";
-                    }
-                }
-            }
-
-            // Handle the last file record
-            if (currentFile.Any())
-            {
-                var fileInfo = CreateFileMetaDataFromFstat(currentFile);
-                if (fileInfo != null)
-                {
-                    files.Add(fileInfo);
-                }
-            }
-
-            return files;
-        }
-
-        /// <summary>
-        /// Creates a FileMetaData object from parsed fstat data
-        /// </summary>
-        private FileMetaData? CreateFileMetaDataFromFstat(Dictionary<string, string> fstatData)
-        {
-            if (!fstatData.ContainsKey("depotFile"))
-            {
-                return null;
-            }
-
-            var depotPath = fstatData["depotFile"];
-
-            // Only include files that exist (not deleted) - this is the key fix!
-            if (fstatData.ContainsKey("headAction") && fstatData["headAction"] == "delete")
-            {
-                _logger.LogDebug("Skipping deleted file: {DepotPath}", depotPath);
-                return null; // Skip deleted files
-            }
-
-            var fileMetaData = new FileMetaData();
-            fileMetaData.DepotPath = new DepotPath(depotPath);
-
-            // Get revision number if available
-            if (fstatData.ContainsKey("headRev"))
-            {
-                if (int.TryParse(fstatData["headRev"], out var revision))
-                {
-                    // FileMetaData doesn't have a direct revision property, but we can store it in the action or other field
-                    // For now, we just log it
-                    _logger.LogDebug("File {DepotPath} revision: {Revision}", depotPath, revision);
-                }
-            }
-
-            return fileMetaData;
-        }
-
-        /// <summary>
-        /// Parses the output of 'p4 files' command into FileMetaData objects
-        /// </summary>
-        private List<FileMetaData> ParseP4FilesOutput(string output)
-        {
-            var files = new List<FileMetaData>();
-
-            if (string.IsNullOrEmpty(output))
-            {
-                return files;
-            }
-
-            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (var line in lines)
-            {
-                try
-                {
-                    // Parse line like: "//depot/main/file.txt#1 - add change 12345 (text)"
-                    // or: "//depot/main/file.txt#2 - delete change 12345 (text)"
-                    var parts = line.Split('#');
-                    if (parts.Length >= 2)
-                    {
-                        var depotPath = parts[0].Trim();
-                        
-                        // Check if this is a delete action - if so, skip this file
-                        if (line.Contains(" - delete "))
-                        {
-                            _logger.LogDebug("Skipping deleted file: {DepotPath}", depotPath);
-                            continue;
-                        }
-                        
-                        // Additional check: if the line contains "no such file" or similar errors, skip
-                        if (line.Contains("no such file") || line.Contains("not in client view"))
-                        {
-                            _logger.LogDebug("Skipping inaccessible file: {DepotPath}", depotPath);
-                            continue;
-                        }
-                        
-                        var revisionPart = parts[1].Split(' ')[0];
-                        if (int.TryParse(revisionPart, out var revision))
-                        {
-                            var fileMetaData = new FileMetaData();
-                            fileMetaData.DepotPath = new DepotPath(depotPath);
-                            files.Add(fileMetaData);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error parsing p4 files output line: {Line}", line);
-                }
-            }
-
-            return files;
-        }
     }
 }
