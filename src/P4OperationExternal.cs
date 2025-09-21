@@ -1179,10 +1179,10 @@ namespace P4Sync
         /// <summary>
         /// Submits a changelist if it has files, otherwise deletes it (interface implementation)
         /// </summary>
-        public void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, string direction)
+        public void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, bool shouldDeleteChangelist)
         {
             // This is a placeholder for the external implementation
-            _logger.LogInformation("SubmitOrDeleteChangelist called for direction: {Direction}", direction);
+            _logger.LogInformation("SubmitOrDeleteChangelist called for shouldDeleteChangelist: {ShouldDelete}", shouldDeleteChangelist);
         }
 
         /// <summary>

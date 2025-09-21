@@ -28,7 +28,7 @@ namespace P4Sync
         /// </summary>
         /// <param name="repo">Repository instance</param>
         /// <param name="changelist">Changelist to submit or delete</param>
-        /// <param name="direction">Direction description for logging</param>
-        void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, string direction);
+        /// <param name="shouldDeleteChangelist">Indicates whether to delete the changelist</param>
+        void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, bool shouldDeleteChangelist);
     }
 }

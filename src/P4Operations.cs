@@ -121,7 +121,7 @@ namespace P4Sync
                 _logger.LogDebug("Executing directional sync with {FilterCount} filter patterns", profile.SyncFilter.Count);
                 if (sourceClient != null && targetClient != null)
                 {
-                    ExecuteDirectionalSync(sourceRepo, targetRepo, sourceConnection, targetConnection, sourceClient, targetClient, profile, profile.SyncFilter, "Source to Target", true);
+                    ExecuteDirectionalSync(sourceRepo, targetRepo, sourceConnection, targetConnection, sourceClient, targetClient, profile, profile.SyncFilter);
                 }
                 else
                 {
@@ -138,17 +138,17 @@ namespace P4Sync
         /// Executes directional synchronization from source to target with operation tracking and file mapping
         /// </summary>
         private void ExecuteDirectionalSync(Repository fromRepo, Repository toRepo, Connection fromConnection, Connection toConnection,
-            Client fromClient, Client toClient, SyncProfile profile, List<string> filterPatterns, string direction, bool isSourceToTarget)
+            Client fromClient, Client toClient, SyncProfile profile, List<string> filterPatterns)
         {
             try
             {
-                _logger.LogDebug("ExecuteDirectionalSync started: {Direction}", direction);
+                _logger.LogDebug("ExecuteDirectionalSync started" );
                 _logger.LogDebug("fromRepo: {Status}", fromRepo != null ? "OK" : "NULL");
                 _logger.LogDebug("toRepo: {Status}", toRepo != null ? "OK" : "NULL");
                 _logger.LogDebug("fromClient: {Status}", fromClient != null ? "OK" : "NULL");
                 _logger.LogDebug("toClient: {Status}", toClient != null ? "OK" : "NULL");
 
-                _logger.LogInformation("Executing {Direction} sync for profile: {ProfileName}", direction, profile.Name);
+                _logger.LogInformation("Executing sync for profile: {ProfileName}", profile.Name);
 
                 // Get workspace information for path translation
                 _logger.LogDebug("Getting workspace information for path translation");
@@ -156,7 +156,7 @@ namespace P4Sync
                 var targetWorkspace = new WorkspaceInfo();
                 var pathMappings = new Dictionary<string, string>();
 
-                var syncOperations = new Dictionary<string, SyncOperation>();
+                var syncOperations = new Dictionary<string, FileAction>();
 
                 // Create changelist for the sync
                 _logger.LogDebug("Creating changelist");
@@ -209,32 +209,25 @@ namespace P4Sync
                     _logger.LogDebug("Mapped source file {SourcePath} to target path {TargetPath}", sourceFile.DepotPath.Path, targetAbsolutePath);
                     // use GetFileMetaData to resolve target local path to depot path
                     var targetFileSpec = toRepo.GetFileMetaData(null, new FileSpec(new LocalPath(targetAbsolutePath))).FirstOrDefault();
+                    if (targetFileSpec == null || targetFileSpec.DepotPath == null)
+                    {
+                        _logger.LogDebug("Target file {TargetPath} does not exist in depot, will be added", targetAbsolutePath);
+                        throw new FileNotFoundException("Target file not able to resolved on target depot", targetAbsolutePath);
+                    }
+                    var targetDepotPath = targetFileSpec.DepotPath.Path;
 
                     sourceToTargetMapping[sourceFile] = targetFileSpec;
 
                     FileAction sourceHeadAction = sourceFile.HeadAction;
 
-                    switch (sourceHeadAction)
-                    {
-                        case FileAction.Add or FileAction.MoveAdd:
-                            AddFileToTarget(fromConnection, fromClient, toConnection, toClient, sourceFile.DepotPath.Path, targetAbsolutePath, changelist);
-                            break;
-                        case FileAction.Edit or FileAction.Integrate:
-                            EditFileOnTarget(fromConnection, fromClient, toConnection, toClient, sourceFile.DepotPath.Path, targetAbsolutePath, changelist);
-                            break;
-                        case FileAction.Delete or FileAction.MoveDelete:
-                            DeleteFileOnTarget(toConnection, targetFileSpec?.DepotPath.Path ?? targetAbsolutePath, changelist);
-                            break;
-                        default:
-                            break;
-                    }
-                    
+                    ApplyP4ActionToTarget(fromConnection, toConnection, sourceFile.DepotPath.Path, sourceLocalPath, targetDepotPath, targetAbsolutePath, sourceHeadAction, changelist);
+                    syncOperations[sourceFile.DepotPath.Path] = sourceHeadAction;
                 }
 
                 // Submit the changelist if any files were modified and auto-submit is enabled
                 if (toRepo != null && changelist != null && profile.AutoSubmit)
                 {
-                    SubmitOrDeleteChangelist(toRepo, changelist, direction);
+                    SubmitOrDeleteChangelist(toRepo, changelist, false);
                 }
                 else
                 {
@@ -249,17 +242,17 @@ namespace P4Sync
                 }
 
                 // Log sync operations summary
-                _logger.LogInformation("{Direction} sync completed. Operations performed:", direction);
+                _logger.LogInformation("sync completed.");
                 foreach (var op in syncOperations)
                 {
                     _logger.LogInformation("  {FilePath}: {Operation}", op.Key, op.Value);
                 }
 
-                _logger.LogInformation("{Direction} sync for profile {ProfileName} completed.", direction, profile.Name);
+                _logger.LogInformation("sync for profile {ProfileName} completed.", profile.Name);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error executing {Direction} sync for profile {ProfileName}", direction, profile.Name);
+                _logger.LogError(ex, "Error executing sync for profile {ProfileName}", profile.Name);
             }
         }
 
@@ -391,31 +384,50 @@ namespace P4Sync
         /// <summary>
         /// Adds a file to target by copying from source client to target client
         /// </summary>
-        private void AddFileToTarget(Connection fromConnection, Client fromClient, Connection toConnection, Client toClient, string sourcePath, string targetPath, Changelist? changelist)
+        private void ApplyP4ActionToTarget(Connection fromConnection, Connection toConnection, string sourceDepotPath, string sourceLocalPath, string targetDepotPath, string targetLocalPath, FileAction sourceHeadAction, Changelist? changelist)
         {
-            if (fromClient == null || toClient == null)
+            if (fromConnection == null || toConnection == null)
             {
-                _logger.LogDebug("Cannot add file - source or target client is null");
+                _logger.LogDebug("Cannot add file - source or target connection is null");
                 return;
             }
-
+            if (fromConnection.connectionEstablished() == false)
+            {
+                fromConnection.Connect(null);
+            }
+            if (toConnection.connectionEstablished() == false)
+            {
+                toConnection.Connect(null);
+            }
             try
             {
-                // Sync the source file to source client workspace
-                SyncFileToClient(fromConnection, sourcePath);
-
-                // Get client paths
-                var sourceRelativePath = GetRelativePath(sourcePath, fromClient.Root);
-                var sourceClientPath = Path.Combine(fromClient.Root, sourceRelativePath);
-                var targetRelativePath = GetRelativePath(targetPath, toClient.Root);
-                var targetClientPath = Path.Combine(toClient.Root, targetRelativePath);
-
-                if (!System.IO.File.Exists(sourceClientPath))
+                if (sourceHeadAction == FileAction.Delete || sourceHeadAction == FileAction.MoveDelete)
                 {
-                    throw new FileNotFoundException("Source file not found in source client workspace", sourceClientPath);
+                   SyncFileToClient(toConnection, targetDepotPath, SyncFilesCmdFlags.Force);
+
+                    // Delete the file from target
+                   var deletedFiles = toConnection.Client.DeleteFiles( new DeleteFilesCmdOptions(DeleteFilesCmdFlags.None, changelist.Id), new FileSpec(new LocalPath(targetLocalPath)));
+
+                    if (deletedFiles.Count > 0)
+                    {
+                        _logger.LogDebug("Successfully deleted file {DepotPath} from target", targetDepotPath);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Failed to delete file {DepotPath} from target", targetDepotPath);
+                    }
+                    return;
+                }
+                // Sync the source file to source client workspace
+                SyncFileToClient(fromConnection, sourceDepotPath);
+
+
+                if (!System.IO.File.Exists(sourceLocalPath))
+                {
+                    throw new FileNotFoundException("Source file not found in source client workspace", sourceLocalPath);
                 }
                 // Ensure target directory exists
-                var directory = Path.GetDirectoryName(targetClientPath);
+                var directory = Path.GetDirectoryName(targetLocalPath);
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
                     Directory.CreateDirectory(directory);
@@ -423,115 +435,62 @@ namespace P4Sync
                 }
 
                 // Check if target file already exists and handle it
-                if (System.IO.File.Exists(targetClientPath))
+                if (System.IO.File.Exists(targetLocalPath))
                 {
-                    var fileInfo = new FileInfo(targetClientPath);
+                    var fileInfo = new FileInfo(targetLocalPath);
                     if (fileInfo.IsReadOnly)
                     {
                         // File is read-only (likely under Perforce control), make it writable
                         fileInfo.IsReadOnly = false;
-                        _logger.LogDebug("Made read-only file writable: {TargetPath}", targetClientPath);
+                        _logger.LogDebug("Made read-only file writable: {TargetPath}", targetLocalPath);
                     }
                 }
-                
-                
-                // Copy file from source client to target client
-                if (sourceClientPath != targetClientPath)
-                {
-                    _logger.LogDebug("Copying file - Source: {SourcePath}, Target: {TargetPath}", sourceClientPath, targetClientPath);
-                    System.IO.File.Copy(sourceClientPath, targetClientPath, true);
-                    _logger.LogDebug("Copied file from {Source} to {Target}", sourceClientPath, targetClientPath);
-                };
-                
-                var addfiles = toConnection.Client.AddFiles( new Options(AddFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetClientPath)));
 
-                if (addfiles.Count > 0)
+
+                // Copy file from source client to target client
+                if (sourceLocalPath != targetLocalPath)
                 {
-                    _logger.LogDebug("Successfully added file {TargetPath} to target", targetPath);
+                    _logger.LogDebug("Copying file - Source: {SourcePath}, Target: {TargetPath}", sourceLocalPath, targetLocalPath);
+                    System.IO.File.Copy(sourceLocalPath, targetLocalPath, true);
+                    _logger.LogDebug("Copied file from {Source} to {Target}", sourceLocalPath, targetLocalPath);
                 }
-                else
+                switch (sourceHeadAction)
                 {
-                    _logger.LogDebug("Failed to add file {TargetPath} to target", targetPath);
+                    case FileAction.Add or FileAction.MoveAdd:
+                        var addfiles = toConnection.Client.AddFiles(new Options(AddFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetLocalPath)));
+
+                        if (addfiles.Count > 0)
+                        {
+                            _logger.LogDebug("Successfully added file {TargetPath} to target", targetDepotPath);
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Failed to add file {TargetPath} to target", targetDepotPath);
+                        }
+                        break;
+                    case FileAction.Edit or FileAction.Integrate:
+                        var editfiles = toConnection.Client.EditFiles(new Options(EditFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetLocalPath)));
+                        if (editfiles.Count > 0)
+                        {
+                            _logger.LogDebug("Successfully opened file {TargetPath} for edit on target", targetDepotPath);
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Failed to open file {TargetPath} for edit on target", targetDepotPath);
+                        }
+                        break;
+                    default:
+                        _logger.LogDebug("Unhandled source head action {Action} for file {SourcePath}", sourceHeadAction, sourceDepotPath);
+                        break;
                 }
+                
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Exception adding file {TargetPath}", targetPath);
+                _logger.LogDebug(ex, "Exception adding file {TargetPath}", targetDepotPath);
                 _logger.LogDebug("Stack trace: {StackTrace}", ex.StackTrace);
             }
         }
-
-        /// <summary>
-        /// Edits a file on target by copying from source client to target client
-        /// </summary>
-        private void EditFileOnTarget(Connection fromConnection, Client fromClient, Connection toConnection, Client toClient, string sourcePath, string targetPath, Changelist? changelist)
-        {
-            if (fromClient == null || toClient == null)
-            {
-                _logger.LogDebug("Cannot edit file - source or target client is null");
-                return;
-            }
-
-            try
-            {
-                // Sync the source file to source client workspace
-                SyncFileToClient(fromConnection, sourcePath);
-
-                // Get client paths
-                var sourceRelativePath = GetRelativePath(sourcePath, fromClient.Root);
-                var sourceClientPath = Path.Combine(fromClient.Root, sourceRelativePath);
-                var targetRelativePath = GetRelativePath(targetPath, toClient.Root);
-                var targetClientPath = Path.Combine(toClient.Root, targetRelativePath);
-
-                var editFiles = toConnection.Client.EditFiles( new Options(EditFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetClientPath)));
-
-                if (editFiles.Count > 0)
-                {
-                    // Copy file from source client to target client (overwrites the existing file)
-                    System.IO.File.Copy(sourceClientPath, targetClientPath, true);
-                    _logger.LogDebug("Successfully updated file {TargetPath} on target", targetPath);
-                }
-                else
-                {
-                    _logger.LogDebug("Failed to edit file {TargetPath} on target", targetPath);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Exception editing file {TargetPath}", targetPath);
-            }
-        }
-
-        /// <summary>
-        /// Deletes a file from target using external P4 process
-        /// </summary>
-        private void DeleteFileOnTarget(Connection connection, string depotPath, Changelist? changelist)
-        {
-            try
-            {
-                // Get the relative path and client path
-                var relativePath = GetRelativePath(depotPath, connection.Client.Root);
-                var clientPath = Path.Combine(connection.Client.Root, relativePath);
-
-                _logger.LogDebug("Deleting file - Depot: {DepotPath}, Client: {ClientPath}", depotPath, clientPath);
-
-                var deletedFiles = connection.Client.DeleteFiles( new DeleteFilesCmdOptions(DeleteFilesCmdFlags.None, changelist.Id), new FileSpec(new LocalPath(clientPath)));
-
-                if (deletedFiles.Count > 0)
-                {
-                    _logger.LogDebug("Successfully deleted file {DepotPath} from target", depotPath);
-                }
-                else
-                {
-                    _logger.LogDebug("Failed to delete file {DepotPath} from target", depotPath);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Exception deleting file {DepotPath}", depotPath);
-            }
-        }
-
 
         /// <summary>
         /// Gets filtered files based on filter patterns using server-side filtering
@@ -574,26 +533,33 @@ namespace P4Sync
         /// <param name="repo">Repository instance</param>
         /// <param name="changelist">Changelist to submit or delete</param>
         /// <param name="direction">Direction description for logging</param>
-        public void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, string direction)
+        public void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, bool shouldDeleteChangelist)
         {
             try
             {
                 var changelistInfo = repo.GetChangelist(changelist.Id);
-                if (changelistInfo.Files.Count > 0)
+                bool isChangelistEmpty = changelistInfo.Files == null || changelistInfo.Files.Count == 0;
+                if (!isChangelistEmpty)
                 {
                     // Try submitting with the changelist's built-in submit method
                     changelist.Submit(new Options());
-                    _logger.LogInformation("{Direction} sync completed successfully with {FileCount} files.", direction, changelistInfo.Files.Count);
+                    _logger.LogInformation("Submit completed successfully with {FileCount} files.", changelistInfo.Files.Count);
                 }
                 else
                 {
-                    _logger.LogInformation("No files to sync from {Direction}.", direction);
-                    repo.DeleteChangelist(changelist, new Options());
+                    _logger.LogInformation("No files in changelist {ChangelistId}.", changelist.Id);
+
+                }
+                if (shouldDeleteChangelist || isChangelistEmpty)
+                {
+                    // Delete the empty changelist
+                    repo.DeleteChangelist(changelistInfo,null);
+                    _logger.LogDebug("Deleted empty changelist {ChangelistId}", changelist.Id);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error submitting {Direction} changelist", direction);
+                _logger.LogError(ex, "Error submitting changelist {ChangelistId}", changelist.Id);
             }
         }
 
