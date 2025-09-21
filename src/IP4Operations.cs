@@ -31,28 +31,4 @@ namespace P4Sync
         /// <param name="direction">Direction description for logging</param>
         void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, string direction);
     }
-
-    /// <summary>
-    /// Enumeration of sync operations
-    /// </summary>
-    public enum SyncOperation
-    {
-        Add,
-        Edit,
-        Delete,
-        Move,
-        Skip
-    }
-
-    /// <summary>
-    /// Result of syncing a file from source
-    /// </summary>
-    public class SyncResult
-    {
-        public SyncOperation Operation { get; set; }
-        public string LocalPath { get; set; } = string.Empty;
-        public bool Success { get; set; }
-        public string ContentHash { get; set; } = string.Empty;
-        public string OriginalPath { get; set; } = string.Empty; // For move detection
-    }
 }
