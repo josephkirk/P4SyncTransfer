@@ -418,6 +418,7 @@ function Test-SyncResults {
     # Check source server files
     Write-Host "Checking source server files..." -ForegroundColor Yellow
     $sourceFiles = & p4 -p $SourcePort files //depot/... 2>&1
+    Write-Host $sourceFiles
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Source server has $($sourceFiles.Count) files"
         if ($Verbose) {
@@ -431,6 +432,7 @@ function Test-SyncResults {
     # Check target server files
     Write-Host "Checking target server files..." -ForegroundColor Yellow
     $targetFiles = & p4 -p $TargetPort files //project/... 2>&1 | Where-Object { $_ -notmatch "- delete " }
+    Write-Host $targetFiles
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Target server has $($targetFiles.Count) files"
 
