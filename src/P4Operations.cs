@@ -76,7 +76,7 @@ namespace P4Sync
                 profile.Target.Port, profile.Target.User, profile.Target.Workspace);
             _logger.LogDebug("SyncFilter: {SyncFilter}", string.Join(", ", profile.SyncFilter ?? new List<string>()));
 
-            _logger.LogInformation("Executing sync for profile: {ProfileName}", profile.Name);
+            _logger.LogInformation("Executing sync for profile: {ProfileName}, source port: {SourcePort}, target port: {TargetPort}", profile.Name, profile.Source.Port, profile.Target.Port);
 
             _logger.LogDebug("Attempting to connect to source repository");
             var (sourceRepo, sourceConnection) = ConnectWithConnection(profile.Source);
@@ -151,8 +151,6 @@ namespace P4Sync
                 _logger.LogDebug("toRepo: {Status}", toRepo != null ? "OK" : "NULL");
                 _logger.LogDebug("fromClient: {Status}", fromClient != null ? "OK" : "NULL");
                 _logger.LogDebug("toClient: {Status}", toClient != null ? "OK" : "NULL");
-
-                _logger.LogInformation("Executing sync for profile: {ProfileName}", profile.Name);
 
                 // Get workspace information for path translation
                 _logger.LogDebug("Getting workspace information for path translation");
@@ -621,7 +619,7 @@ namespace P4Sync
                 {
                     // Try submitting with the changelist's built-in submit method
                     changelist.Submit(new Options());
-                    _logger.LogInformation("Submit completed successfully with {ChangelistId} with {FileCount} files.", changelist.Id, changelistInfo.Files.Count);
+                    _logger.LogInformation("Submit completed successfully with Changelist {ChangelistId} contains {FileCount} files.", changelist.Id, changelistInfo.Files.Count);
                     return;
                 }
                 else
