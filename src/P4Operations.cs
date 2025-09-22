@@ -146,7 +146,8 @@ namespace P4Sync
             try
             {
                 var syncTransfersRecord = new P4SyncedTransfers();
-                _logger.LogDebug("ExecuteDirectionalSync started" );
+
+                _logger.LogDebug("ExecuteDirectionalSync started");
                 _logger.LogDebug("fromRepo: {Status}", fromRepo != null ? "OK" : "NULL");
                 _logger.LogDebug("toRepo: {Status}", toRepo != null ? "OK" : "NULL");
                 _logger.LogDebug("fromClient: {Status}", fromClient != null ? "OK" : "NULL");
@@ -158,7 +159,7 @@ namespace P4Sync
                 var targetWorkspace = new WorkspaceInfo();
                 var pathMappings = new Dictionary<string, string>();
 
-                var syncOperations = new Dictionary<string, FileAction>();
+                var syncOperations = new Dictionary<string, SyncOperation>();
 
                 // Create changelist for the sync
                 _logger.LogDebug("Creating changelist");
@@ -200,9 +201,14 @@ namespace P4Sync
                 // for each source file, convert them to relative path using source client root then resolve them to absolute path using target client root
                 foreach (var sourceFile in sourceFiles)
                 {
-
+                    _logger.LogDebug("Processing source file {SourceFile}", sourceFile.DepotPath.Path);
                     var sourceLocalPath = sourceFile.LocalPath.Path;
-
+                    var lastSyncForSource = _syncHistory.QueryTransfers(t => t.SourceDepotPath == sourceFile.DepotPath.Path && t.SourceRevision == sourceFile.HeadRev && t.Success).FirstOrDefault();
+                    if (lastSyncForSource != null)
+                    {
+                        _logger.LogDebug("File {SourceFile} at revision {SourceRev} was already synced in last sync, skipping", sourceFile.DepotPath.Path, sourceFile.HeadRev);
+                        continue;
+                    }
                     // Convert source local path to relative path using source client root
                     var sourceRelativePath = Path.GetRelativePath(fromClient.Root, sourceLocalPath);
 
@@ -210,6 +216,7 @@ namespace P4Sync
                     var targetAbsolutePath = Path.Combine(toClient.Root, sourceRelativePath);
 
                     _logger.LogDebug("Mapped source file {SourcePath} to target path {TargetPath}", sourceFile.DepotPath.Path, targetAbsolutePath);
+                    _logger.LogDebug("Source File Digest: {SourceDigest}", sourceFile.Digest);
                     // use GetFileMetaData to resolve target local path to depot path
                     var targetFileSpec = toConnection.Client.GetClientFileMappings([new LocalPath(targetAbsolutePath)]).FirstOrDefault();
                     if (targetFileSpec == null || targetFileSpec.DepotPath == null)
@@ -218,47 +225,62 @@ namespace P4Sync
                         throw new FileNotFoundException("Target file not able to resolved on target depot", targetAbsolutePath);
                     }
                     var targetDepotPath = targetFileSpec.DepotPath.Path;
+                    var targetFileSpecs = toRepo.GetFileMetaData(new Options(), new FileSpec(new DepotPath(targetDepotPath)));
+                    int expectedTargetHeadRev = 1;
+                    bool isTargetExistOnDepot = false;
+
+                    if (targetFileSpecs != null && targetFileSpecs.Count > 0)
+                    {
+                        var resolvedTargetFileSpec = targetFileSpecs[0];
+                        isTargetExistOnDepot = resolvedTargetFileSpec.HeadRev > 0 || resolvedTargetFileSpec.HeadAction != FileAction.Delete || resolvedTargetFileSpec.HeadAction != FileAction.MoveDelete;
+                        expectedTargetHeadRev = resolvedTargetFileSpec.HeadRev + 1;
+                    }
+                    _logger.LogDebug("Resolved target file {TargetPath} exists on target depot: {Exists}", targetDepotPath, isTargetExistOnDepot);
 
                     sourceToTargetMapping[sourceFile] = targetFileSpec;
 
                     FileAction sourceHeadAction = sourceFile.HeadAction;
 
-                    var syncOperation = ConvertFileActionToSyncOperation(sourceHeadAction);
+                    // var syncOperation = isTargetExistOnDepot ? SyncOperation.Edit : SyncOperation.Add;
+                    // syncOperation = sourceHeadAction == FileAction.Delete || sourceHeadAction == FileAction.MoveDelete ? SyncOperation.Delete : syncOperation;
+                    // syncOperation = syncOperation == SyncOperation.Delete && !isTargetExistOnDepot ? SyncOperation.None : syncOperation;
 
+                    // Determine sync operation based on source file action and target existence
+                    SyncOperation syncOperation = sourceHeadAction switch
+                    {
+                        FileAction.Delete or FileAction.MoveDelete => isTargetExistOnDepot ? SyncOperation.Delete : SyncOperation.Skip,
+                        _ => isTargetExistOnDepot ? SyncOperation.Edit : SyncOperation.Add
+                    };
+
+                    // Create sync transfer record
                     var syncTransferRecord = new P4SyncedTransfer
                     {
                         SourceDepotPath = sourceFile.DepotPath.Path,
                         SourceLocalPath = sourceLocalPath,
                         TargetDepotPath = targetDepotPath,
                         TargetLocalPath = targetAbsolutePath,
+                        SourceRevision = sourceFile.HeadRev,
+                        TargetRevision = expectedTargetHeadRev,
                         Action = sourceHeadAction.ToString(),
                         Operation = syncOperation
                     };
-                    bool success = false;
-                    if (sourceHeadAction == FileAction.Add && FileExistsOnTarget(toRepo, targetDepotPath))
-                    {
-                        _logger.LogDebug("File {TargetDepotPath} already exists on target, skipping add", targetDepotPath);
-                        syncTransferRecord.ErrorMessage = "File already exists on target, skipping add";
-                    }
-                    else
-                    {
-                        success = ApplyP4ActionToTarget(fromConnection, toConnection, sourceFile.DepotPath.Path, sourceLocalPath, targetDepotPath, targetAbsolutePath, sourceHeadAction, changelist);
-                    }
+                    bool success = ApplyP4ActionToTarget(fromConnection, toConnection, sourceFile.DepotPath.Path, sourceLocalPath, targetDepotPath, targetAbsolutePath, syncOperation, changelist);
+                    
                     if (!success)
                     {
-                        syncTransferRecord.ErrorMessage = $"Failed to apply action {sourceHeadAction} for file {sourceFile.DepotPath.Path} to target {targetDepotPath}";
-                        _logger.LogDebug("Failed to apply action {Action} for file {SourcePath} to target {TargetPath}", sourceHeadAction, sourceFile.DepotPath.Path, targetDepotPath);
+                        syncTransferRecord.ErrorMessage = $"Failed to apply action {syncOperation} for file {sourceFile.DepotPath.Path} to target {targetDepotPath}";
+                        _logger.LogDebug("Failed to apply action {Action} for file {SourcePath} to target {TargetPath}", syncOperation, sourceFile.DepotPath.Path, targetDepotPath);
                     }
                     else
                     {
-                        syncOperations[targetDepotPath] = sourceHeadAction;
+                        syncOperations[targetDepotPath] = syncOperation;
                         syncTransfersRecord.Transfers.Add(syncTransferRecord);
                     }
                     syncTransferRecord.Success = success;
                     syncTransfersRecord.Transfers.Add(syncTransferRecord);
 
                 }
-
+                syncTransfersRecord.ChangelistNumber = changelist != null ? changelist.Id : 0;
                 // Submit the changelist if any files were modified and auto-submit is enabled
                 if (toRepo != null && changelist != null && profile.AutoSubmit)
                 {
@@ -278,21 +300,26 @@ namespace P4Sync
 
                 // Log sync operations summary
                 _logger.LogInformation("sync completed.");
-                foreach (var op in syncOperations)
-                {
-                    _logger.LogInformation("  {FilePath}: {Operation}", op.Key, op.Value);
-                }
-
-                _logger.LogInformation("sync for profile {ProfileName} completed.", profile.Name);
+                
 
                 // Log sync history
-                var syncHistory = new SyncHistory
+                if (syncTransfersRecord.Transfers.Count > 0)
                 {
-                    Profile = profile,
-                    Syncs = new List<P4SyncedTransfers> { syncTransfersRecord }
-                };
-                _syncHistory.LogSync(syncHistory);
-                _logger.LogDebug("Sync history logged for profile {ProfileName}", profile.Name);
+                    foreach (var op in syncOperations)
+                    {
+                        _logger.LogInformation("  {FilePath}: {Operation}", op.Key, op.Value);
+                    }
+
+                    _logger.LogInformation("sync for profile {ProfileName} completed.", profile.Name);
+                    var syncHistory = new SyncHistory
+                    {
+                        Profile = profile,
+                        Syncs = new List<P4SyncedTransfers> { syncTransfersRecord }
+                    };
+                    _syncHistory.LogSync(syncHistory);
+                    _logger.LogDebug("Sync history logged for profile {ProfileName}", profile.Name);
+                }
+                
             }
             catch (Exception ex)
             {
@@ -428,9 +455,15 @@ namespace P4Sync
         /// <summary>
         /// Adds a file to target by copying from source client to target client
         /// </summary>
-        private bool ApplyP4ActionToTarget(Connection fromConnection, Connection toConnection, string sourceDepotPath, string sourceLocalPath, string targetDepotPath, string targetLocalPath, FileAction sourceHeadAction, Changelist? changelist)
+        private bool ApplyP4ActionToTarget(Connection fromConnection, Connection toConnection, string sourceDepotPath, string sourceLocalPath, string targetDepotPath, string targetLocalPath, SyncOperation syncOperation, Changelist? changelist)
         {
+            if (syncOperation == SyncOperation.Skip)
+            {
+                _logger.LogDebug("Skipping file {SourceDepotPath} as sync operation is Skip", sourceDepotPath);
+                return true;
+            }
             bool isSuccess = false;
+
             if (fromConnection == null || toConnection == null)
             {
                 _logger.LogDebug("Cannot add file - source or target connection is null");
@@ -451,8 +484,8 @@ namespace P4Sync
             }
             try
             {
-                _logger.LogDebug("Operating on file {SourceDepotPath} to {TargetDepotPath} with action {SourceHeadAction}", sourceDepotPath, targetDepotPath, sourceHeadAction);
-                if (sourceHeadAction == FileAction.Delete || sourceHeadAction == FileAction.MoveDelete)
+                _logger.LogDebug("Operating on file {SourceDepotPath} to {TargetDepotPath} with action {SyncOperation}", sourceDepotPath, targetDepotPath, syncOperation);
+                if (syncOperation == SyncOperation.Delete)
                 {
                     SyncFileToClient(toConnection, targetDepotPath, SyncFilesCmdFlags.Force);
 
@@ -507,9 +540,9 @@ namespace P4Sync
                     System.IO.File.Copy(sourceLocalPath, targetLocalPath, true);
                     _logger.LogDebug("Copied file from {Source} to {Target}", sourceLocalPath, targetLocalPath);
                 }
-                switch (sourceHeadAction)
+                switch (syncOperation)
                 {
-                    case FileAction.Add or FileAction.MoveAdd:
+                    case SyncOperation.Add:
                         var addfiles = toConnection.Client.AddFiles(new Options(AddFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetLocalPath)));
 
                         if (addfiles.Count > 0)
@@ -523,7 +556,7 @@ namespace P4Sync
                             isSuccess = false;
                         }
                         break;
-                    case FileAction.Edit or FileAction.Integrate:
+                    case SyncOperation.Edit:
                         SyncFileToClient(toConnection, sourceDepotPath, SyncFilesCmdFlags.ServerOnly);
                         var editfiles = toConnection.Client.EditFiles(new Options(EditFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetLocalPath)));
                         if (editfiles.Count > 0)
@@ -539,7 +572,7 @@ namespace P4Sync
                         
                         break;
                     default:
-                        _logger.LogDebug("Unhandled source head action {Action} for file {SourcePath}", sourceHeadAction, sourceDepotPath);
+                        _logger.LogDebug("Unhandled source head action {Action} for file {SourcePath}", syncOperation, sourceDepotPath);
                         break;
                 }
 
