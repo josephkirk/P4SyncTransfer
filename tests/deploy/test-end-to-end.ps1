@@ -496,29 +496,40 @@ function Test-DeleteFileOperation {
             return $false
         }
 
-        # Delete a file from source server
+        # Check if file is already opened for delete
+        $openedFiles = & p4 -p $SourcePort -u admin -c testworkspace opened 2>&1
         $fileToDelete = "//depot/test-files/readme.txt"
-        Write-Host "Deleting file from source: $fileToDelete" -ForegroundColor Yellow
-
-        $deleteResult = & p4 -p $SourcePort -u admin -c testworkspace delete $fileToDelete 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to delete file on source server: $deleteResult"
-            return $false
-        }
-
-        # Submit the delete - use a simpler approach
-        Write-Host "Checking for pending changes..." -ForegroundColor Gray
-        $pendingFiles = & p4 -p $SourcePort -u admin -c testworkspace opened 2>&1
-        if ($LASTEXITCODE -eq 0 -and $pendingFiles -match "delete") {
-            Write-Host "Found pending delete operations, submitting..." -ForegroundColor Gray
-            # Force submit all pending changes
+        
+        
+        if ($openedFiles -match [regex]::Escape($fileToDelete) -and $openedFiles -match "delete") {
+            Write-Host "File is already opened for delete, submitting existing change..." -ForegroundColor Yellow
             $submitResult = & p4 -p $SourcePort -u admin -c testworkspace submit -f submitunchanged -d "Delete test file" 2>&1
             if ($LASTEXITCODE -ne 0) {
-                Write-Error "Failed to submit delete: $submitResult"
+                Write-Error "Failed to submit existing delete: $submitResult"
                 return $false
             }
         } else {
-            Write-Host "No pending delete operations found" -ForegroundColor Yellow
+            # Delete the file
+            Write-Host "Deleting file from source: $fileToDelete" -ForegroundColor Yellow
+            $deleteResult = & p4 -p $SourcePort -u admin -c testworkspace delete -f $fileToDelete 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Failed to delete file on source server: $deleteResult"
+                return $false
+            }
+
+            # Submit the delete
+            Write-Host "Checking for pending changes..." -ForegroundColor Gray
+            $pendingFiles = & p4 -p $SourcePort -u admin -c testworkspace opened 2>&1
+            if ($LASTEXITCODE -eq 0 -and $pendingFiles -match "delete") {
+                Write-Host "Found pending delete operations, submitting..." -ForegroundColor Gray
+                $submitResult = & p4 -p $SourcePort -u admin -c testworkspace submit -f submitunchanged -d "Delete test file" 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Error "Failed to submit delete: $submitResult"
+                    return $false
+                }
+            } else {
+                Write-Host "No pending delete operations found" -ForegroundColor Yellow
+            }
         }
 
         Write-Success "File deleted successfully on source server"
@@ -615,28 +626,64 @@ function Test-MoveRenameFileOperation {
         Write-Success "Test file created successfully"
 
         # Move/rename the file
+        Write-Host "Opening file for edit before move..." -ForegroundColor Yellow
+        $editResult = & p4 -p $SourcePort -u admin -c testworkspace edit $originalFile 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to open file for edit: $editResult"
+            return $false
+        }
+
         Write-Host "Moving file from $originalFile to $movedFile" -ForegroundColor Yellow
-        $moveResult = & p4 -p $SourcePort -u admin -c testworkspace move $originalFile $movedFile 2>&1
+        $moveResult = & p4 -p $SourcePort -u admin -c testworkspace move -f $originalFile $movedFile 2>&1
+        Write-Host "Move command result: $moveResult" -ForegroundColor Gray
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Failed to move file on source server: $moveResult"
             return $false
         }
 
         # Submit the move
-        Write-Host "Checking for pending move operations..." -ForegroundColor Gray
+        Write-Host "Checking for pending operations after move..." -ForegroundColor Gray
         $pendingFiles = & p4 -p $SourcePort -u admin -c testworkspace opened 2>&1
-        if ($LASTEXITCODE -eq 0 -and ($pendingFiles -match "move" -or $pendingFiles -match "add" -or $pendingFiles -match "delete")) {
-            Write-Host "Found pending operations, submitting..." -ForegroundColor Gray
+        Write-Host "Pending files output:" -ForegroundColor Gray
+        $pendingFiles | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+        
+        if ($LASTEXITCODE -eq 0 -and ($pendingFiles -match "add" -or $pendingFiles -match "delete")) {
+            Write-Host "Found pending add/delete operations from move, submitting..." -ForegroundColor Gray
             $submitResult = & p4 -p $SourcePort -u admin -c testworkspace submit -f submitunchanged -d "Move test file" 2>&1
+            Write-Host "Submit result: $submitResult" -ForegroundColor Gray
             if ($LASTEXITCODE -ne 0) {
                 Write-Error "Failed to submit move: $submitResult"
                 return $false
             }
         } else {
-            Write-Host "No pending operations found for move" -ForegroundColor Yellow
+            Write-Host "No pending operations found after move, attempting submit anyway..." -ForegroundColor Yellow
+            # Check if the move was already submitted or if we need to force submit
+            $submitResult = & p4 -p $SourcePort -u admin -c testworkspace submit -f submitunchanged -d "Move test file" 2>&1
+            Write-Host "Forced submit result: $submitResult" -ForegroundColor Gray
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Submit failed, but continuing..." -ForegroundColor Yellow
+            }
         }
 
         Write-Success "File moved successfully on source server"
+
+        # Verify the move on source depot
+        Write-Host "Verifying move on source depot..." -ForegroundColor Yellow
+        $sourceFiles = & p4 -p $SourcePort -u admin -c testworkspace files //depot/test-files/... 2>&1
+        Write-Host "Source files after move:" -ForegroundColor Gray
+        $sourceFiles | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+        
+        $sourceOriginalLine = $sourceFiles | Where-Object { $_ -match [regex]::Escape("//depot/test-files/move-test.txt") }
+        $sourceMovedLine = $sourceFiles | Where-Object { $_ -match [regex]::Escape("//depot/test-files/moved-file.txt") }
+        
+        if ($sourceMovedLine -and $sourceMovedLine -match "move/add" -and $sourceOriginalLine -and $sourceOriginalLine -match "move/delete") {
+            Write-Success "Move confirmed on source depot"
+        } else {
+            Write-Error "Move not properly recorded on source depot"
+            Write-Host "Original file line: $sourceOriginalLine" -ForegroundColor Red
+            Write-Host "Moved file line: $sourceMovedLine" -ForegroundColor Red
+            return $false
+        }
 
         # Run sync again to test move propagation
         Write-Host "Running sync to propagate move operation..." -ForegroundColor Yellow
@@ -648,7 +695,9 @@ function Test-MoveRenameFileOperation {
 
         # Verify the file was moved on target
         Write-Host "Verifying move was propagated to target..." -ForegroundColor Yellow
-        $targetFiles = & p4 -p $TargetPort -u admin -c testworkspace files //project/... 2>&1
+        $targetFiles = & p4 -p $TargetPort -u admin -c workspace files //project/... 2>&1
+        Write-Host "Target files after move:" -ForegroundColor Gray
+        $targetFiles | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Failed to list target server files after move"
             return $false
@@ -685,6 +734,26 @@ function Test-MoveRenameFileOperation {
 # Main test execution
 Write-Host "🚀 Starting P4Sync End-to-End Integration Test" -ForegroundColor Magenta
 Write-Host "=" * 50 -ForegroundColor Magenta
+
+# Clean up logs folder from previous runs
+Write-TestStep "Cleaning up logs folders"
+$logsPaths = @(
+    Join-Path $PSScriptRoot "logs"    # logs in test directory
+    Join-Path $PSScriptRoot "..\..\logs"  # logs in root directory
+)
+
+$cleanedAny = $false
+foreach ($logsPath in $logsPaths) {
+    if (Test-Path $logsPath) {
+        Remove-Item -Path $logsPath -Recurse -Force
+        Write-Success "Cleaned up logs folder: $logsPath"
+        $cleanedAny = $true
+    }
+}
+
+if (-not $cleanedAny) {
+    Write-Success "No logs folders to clean up"
+}
 
 $testResults = @()
 
