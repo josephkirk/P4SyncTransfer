@@ -34,10 +34,10 @@ namespace P4Sync
         public string? SourceLocalPath { get; set; }
         public string? TargetDepotPath { get; set; }
         public string? TargetLocalPath { get; set; }
-        public string? Action { get; set; }
+        public string? SourceAction { get; set; }
         public int SourceRevision { get; set; } = 0;
         public int TargetRevision { get; set; } = 0;
-        public SyncOperation Operation { get; set; } = SyncOperation.Skip;
+        public SyncOperation TargetOperation { get; set; } = SyncOperation.Skip;
         public string ContentHash { get; set; } = string.Empty;
         public bool Success { get; set; } = false;
         public string ErrorMessage { get; set; } = string.Empty;
