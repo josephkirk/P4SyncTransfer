@@ -10,10 +10,13 @@ namespace P4Sync.Tests.Unit
     public class MoveRenameTests
     {
         private readonly Mock<ILogger<P4Operations>> _mockLogger;
+        private readonly P4SyncHistory _syncHistory;
 
         public MoveRenameTests()
         {
             _mockLogger = new Mock<ILogger<P4Operations>>();
+            var tempDir = Path.Combine(Path.GetTempPath(), "P4SyncTestHistoryMove");
+            _syncHistory = new P4SyncHistory(tempDir, enableFileWriting: false);
         }
 
         [Fact]
@@ -103,7 +106,7 @@ namespace P4Sync.Tests.Unit
         public void P4Operations_CanHandleMoveScenarios()
         {
             // Arrange
-            var p4Ops = new P4Operations(_mockLogger.Object);
+            var p4Ops = new P4Operations(_mockLogger.Object, _syncHistory);
 
             // Act & Assert - Verify the instance can be created
             Assert.NotNull(p4Ops);

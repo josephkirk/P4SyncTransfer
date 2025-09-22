@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace P4Sync
 {
@@ -12,11 +14,16 @@ namespace P4Sync
     public class P4SyncHistory
     {
         private readonly string historyDirectory;
+        private readonly bool enableFileWriting;
 
-        public P4SyncHistory(string directory)
+        public P4SyncHistory(string directory, bool enableFileWriting = true)
         {
             historyDirectory = directory;
-            Directory.CreateDirectory(historyDirectory);
+            this.enableFileWriting = enableFileWriting;
+            if (enableFileWriting)
+            {
+                Directory.CreateDirectory(historyDirectory);
+            }
         }
 
         /// <summary>
@@ -25,12 +32,24 @@ namespace P4Sync
         /// <param name="syncHistory">The sync history to log</param>
         public void LogSync(SyncHistory syncHistory)
         {
-            if (syncHistory.Syncs.Count == 0) return;
+            if (!enableFileWriting || syncHistory.Syncs.Count == 0) return;
+
+            syncHistory.ProfileId = ComputeProfileId(syncHistory.Profile);
 
             var date = syncHistory.Syncs.First().SyncTime.Date;
             var filePath = GetFilePathForDate(date);
             var histories = LoadHistoriesForDate(date);
-            histories.Add(syncHistory);
+
+            var existingHistory = histories.FirstOrDefault(h => h.ProfileId == syncHistory.ProfileId);
+            if (existingHistory != null)
+            {
+                existingHistory.Syncs.AddRange(syncHistory.Syncs);
+            }
+            else
+            {
+                histories.Add(syncHistory);
+            }
+
             SaveHistoriesForDate(histories, date);
         }
 
@@ -40,6 +59,9 @@ namespace P4Sync
         /// <returns>List of all sync histories</returns>
         public List<SyncHistory> LoadAllHistories()
         {
+            if (!enableFileWriting)
+                return new List<SyncHistory>();
+
             var allHistories = new List<SyncHistory>();
             var files = Directory.GetFiles(historyDirectory, "sync_history_*.json");
             foreach (var file in files)
@@ -121,6 +143,20 @@ namespace P4Sync
             var histories = LoadAllHistories();
             var profileHistory = histories.FirstOrDefault(h => h.Profile?.Name == profileName);
             return profileHistory?.Syncs.OrderByDescending(s => s.SyncTime).FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Computes a unique ID for a sync profile based on its content
+        /// </summary>
+        /// <param name="profile">The sync profile</param>
+        /// <returns>Profile ID as string</returns>
+        private string ComputeProfileId(SyncProfile? profile)
+        {
+            if (profile == null) return string.Empty;
+            var json = JsonSerializer.Serialize(profile);
+            using var sha256 = SHA256.Create();
+            var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(json));
+            return new Guid(hash.Take(16).ToArray()).ToString();
         }
     }
 }

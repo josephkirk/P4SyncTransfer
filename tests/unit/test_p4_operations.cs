@@ -12,17 +12,20 @@ namespace P4Sync.Tests.Unit
     public class P4OperationsTests
     {
         private readonly Mock<ILogger<P4Operations>> _mockLogger;
+        private readonly P4SyncHistory _syncHistory;
 
         public P4OperationsTests()
         {
             _mockLogger = new Mock<ILogger<P4Operations>>();
+            var tempDir = Path.Combine(Path.GetTempPath(), "P4SyncTestHistory");
+            _syncHistory = new P4SyncHistory(tempDir, enableFileWriting: false);
         }
 
         [Fact]
         public void Constructor_CreatesInstance()
         {
             // Arrange & Act
-            var ops = new P4Operations(_mockLogger.Object);
+            var ops = new P4Operations(_mockLogger.Object, _syncHistory);
 
             // Assert
             Assert.NotNull(ops);
@@ -32,7 +35,7 @@ namespace P4Sync.Tests.Unit
         public void ExecuteSync_WithNullSource_LogsError()
         {
             // Arrange
-            var p4Ops = new P4Operations(_mockLogger.Object);
+            var p4Ops = new P4Operations(_mockLogger.Object, _syncHistory);
             var profile = new SyncProfile
             {
                 Name = "TestProfile",
@@ -52,7 +55,7 @@ namespace P4Sync.Tests.Unit
         {
             // Arrange
             var mockLogger = new Mock<ILogger<P4Operations>>();
-            var p4Ops = new P4Operations(mockLogger.Object);
+            var p4Ops = new P4Operations(mockLogger.Object, _syncHistory);
             var profile = new SyncProfile
             {
                 Name = "TestProfile",
@@ -71,7 +74,7 @@ namespace P4Sync.Tests.Unit
         {
             // Arrange
             var mockLogger = new Mock<ILogger<P4Operations>>();
-            var p4Ops = new P4Operations(mockLogger.Object);
+            var p4Ops = new P4Operations(mockLogger.Object, _syncHistory);
             var profile = new SyncProfile
             {
                 Name = "TestProfile",
@@ -91,7 +94,7 @@ namespace P4Sync.Tests.Unit
         {
             // Arrange
             var mockLogger = new Mock<ILogger<P4Operations>>();
-            var p4Ops = new P4Operations(mockLogger.Object);
+            var p4Ops = new P4Operations(mockLogger.Object, _syncHistory);
             var profile = new SyncProfile
             {
                 Name = "TestProfile",
@@ -111,7 +114,7 @@ namespace P4Sync.Tests.Unit
         {
             // Arrange
             var mockLogger = new Mock<ILogger<P4Operations>>();
-            var p4Ops = new P4Operations(mockLogger.Object);
+            var p4Ops = new P4Operations(mockLogger.Object, _syncHistory);
 
             // This test verifies the method exists and has the correct signature
             // The actual P4 API testing is done in integration tests
@@ -129,7 +132,7 @@ namespace P4Sync.Tests.Unit
         {
             // Arrange
             var mockLogger = new Mock<ILogger<P4Operations>>();
-            var p4Ops = new P4Operations(mockLogger.Object);
+            var p4Ops = new P4Operations(mockLogger.Object, _syncHistory);
 
             // This test verifies the method exists and has the correct signature
             var method = typeof(P4Operations).GetMethod("SubmitOrDeleteChangelist");
@@ -181,7 +184,7 @@ namespace P4Sync.Tests.Unit
         public void P4Operations_InheritsExpectedInterface()
         {
             // Arrange
-            var p4Ops = new P4Operations(_mockLogger.Object);
+            var p4Ops = new P4Operations(_mockLogger.Object, _syncHistory);
 
             // Assert - Verify it's a valid P4Operations instance
             Assert.NotNull(p4Ops);
