@@ -12,6 +12,7 @@ using System.Linq;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Serilog;
 
 // Check if running with command line arguments
 if (args.Length > 0)
@@ -35,6 +36,12 @@ IHost CreateHost(string configPath)
         })
         .ConfigureServices((context, services) =>
         {
+            // Configure Serilog
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(context.Configuration)
+                .WriteTo.File("logs/app.log")
+                .CreateLogger();
+
             // Register configuration
             services.AddSingleton<IConfiguration>(context.Configuration);
 
@@ -43,8 +50,7 @@ IHost CreateHost(string configPath)
             {
                 builder.AddConfiguration(context.Configuration.GetSection("Logging"));
                 builder.AddConsole();
-                // Note: File logging requires additional package Microsoft.Extensions.Logging.File
-                // For now, using console logging. File logging can be added later.
+                builder.AddSerilog();
             });
 
             // Register services
