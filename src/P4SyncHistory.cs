@@ -105,7 +105,7 @@ namespace P4Sync
         /// </summary>
         /// <param name="predicate">Predicate to filter syncs</param>
         /// <returns>Enumerable of matching syncs</returns>
-        public IEnumerable<P4SyncTransfers> QuerySyncs(Func<P4SyncTransfers, bool> predicate)
+        public IEnumerable<P4SyncedTransfers> QuerySyncs(Func<P4SyncedTransfers, bool> predicate)
         {
             var histories = LoadAllHistories();
             return histories.SelectMany(h => h.Syncs).Where(predicate);
@@ -116,7 +116,7 @@ namespace P4Sync
         /// </summary>
         /// <param name="profileName">Name of the profile</param>
         /// <returns>The latest sync transfers or null if not found</returns>
-        public P4SyncTransfers? GetLatestSync(string profileName)
+        public P4SyncedTransfers? GetLatestSync(string profileName)
         {
             var histories = LoadAllHistories();
             var profileHistory = histories.FirstOrDefault(h => h.Profile?.Name == profileName);

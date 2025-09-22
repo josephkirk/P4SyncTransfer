@@ -142,6 +142,7 @@ namespace P4Sync
         {
             try
             {
+                var syncTransfersRecord = new P4SyncedTransfers();
                 _logger.LogDebug("ExecuteDirectionalSync started" );
                 _logger.LogDebug("fromRepo: {Status}", fromRepo != null ? "OK" : "NULL");
                 _logger.LogDebug("toRepo: {Status}", toRepo != null ? "OK" : "NULL");
@@ -198,6 +199,7 @@ namespace P4Sync
                 // for each source file, convert them to relative path using source client root then resolve them to absolute path using target client root
                 foreach (var sourceFile in sourceFiles)
                 {
+
                     var sourceLocalPath = sourceFile.LocalPath.Path;
 
                     // Convert source local path to relative path using source client root
@@ -220,10 +222,22 @@ namespace P4Sync
 
                     FileAction sourceHeadAction = sourceFile.HeadAction;
 
+                    var syncOperation = ConvertFileActionToSyncOperation(sourceHeadAction);
+
+                    var syncTransferRecord = new P4SyncedTransfer
+                    {
+                        SourceDepotPath = sourceFile.DepotPath.Path,
+                        SourceLocalPath = sourceLocalPath,
+                        TargetDepotPath = targetDepotPath,
+                        TargetLocalPath = targetAbsolutePath,
+                        Action = sourceHeadAction.ToString(),
+                        Operation = syncOperation
+                    };
                     bool success = false;
                     if (sourceHeadAction == FileAction.Add && FileExistsOnTarget(toRepo, targetDepotPath))
                     {
                         _logger.LogDebug("File {TargetDepotPath} already exists on target, skipping add", targetDepotPath);
+                        syncTransferRecord.ErrorMessage = "File already exists on target, skipping add";
                     }
                     else
                     {
@@ -231,12 +245,17 @@ namespace P4Sync
                     }
                     if (!success)
                     {
-                        _logger.LogDebug("Failed to apply action {Action} for file {SourcePath} to target", sourceHeadAction, sourceFile.DepotPath.Path);
+                        syncTransferRecord.ErrorMessage = $"Failed to apply action {sourceHeadAction} for file {sourceFile.DepotPath.Path} to target {targetDepotPath}";
+                        _logger.LogDebug("Failed to apply action {Action} for file {SourcePath} to target {TargetPath}", sourceHeadAction, sourceFile.DepotPath.Path, targetDepotPath);
                     }
                     else
                     {
-                        syncOperations[sourceFile.DepotPath.Path] = sourceHeadAction;
+                        syncOperations[targetDepotPath] = sourceHeadAction;
+                        syncTransfersRecord.Transfers.Add(syncTransferRecord);
                     }
+                    syncTransferRecord.Success = success;
+                    syncTransfersRecord.Transfers.Add(syncTransferRecord);
+
                 }
 
                 // Submit the changelist if any files were modified and auto-submit is enabled
@@ -524,6 +543,22 @@ namespace P4Sync
         }
 
         /// <summary>
+        /// Converts a Perforce FileAction to a SyncOperation
+        /// </summary>
+        /// <param name="fileAction">The FileAction from Perforce</param>
+        /// <returns>The corresponding SyncOperation</returns>
+        private SyncOperation ConvertFileActionToSyncOperation(FileAction fileAction)
+        {
+            return fileAction switch
+            {
+                FileAction.Add or FileAction.MoveAdd => SyncOperation.Add,
+                FileAction.Edit or FileAction.Integrate => SyncOperation.Edit,
+                FileAction.Delete or FileAction.MoveDelete => SyncOperation.Delete,
+                _ => SyncOperation.Skip
+            };
+        }
+
+        /// <summary>
         /// Gets filtered files based on filter patterns using server-side filtering
         /// </summary>
         /// <param name="connection">Connection for authenticated operations</param>
@@ -574,7 +609,7 @@ namespace P4Sync
                 {
                     // Try submitting with the changelist's built-in submit method
                     changelist.Submit(new Options());
-                    _logger.LogInformation("Submit completed successfully with {FileCount} files.", changelistInfo.Files.Count);
+                    _logger.LogInformation("Submit completed successfully with {ChangelistId} with {FileCount} files.", changelist.Id, changelistInfo.Files.Count);
                     return;
                 }
                 else

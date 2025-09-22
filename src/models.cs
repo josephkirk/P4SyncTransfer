@@ -31,9 +31,11 @@ namespace P4Sync
     // class to hold file metadata information of source / target mapping and revision for history tracking and logging
     public class P4SyncedTransfer
     {
-        public string? SourceFile { get; set; }
-        public string? TargetFile { get; set; }
-
+        public string? SourceDepotPath { get; set; }
+        public string? SourceLocalPath { get; set; }
+        public string? TargetDepotPath { get; set; }
+        public string? TargetLocalPath { get; set; }
+        public string? Action { get; set; }
         public int SourceRevision { get; set; } = 0;
         public int TargetRevision { get; set; } = 0;
         public SyncOperation Operation { get; set; } = SyncOperation.Skip;
@@ -42,7 +44,7 @@ namespace P4Sync
         public string ErrorMessage { get; set; } = string.Empty;
     }
 
-    public class P4SyncTransfers
+    public class P4SyncedTransfers
     {
         public DateTime SyncTime { get; set; } = DateTime.Now;
         public List<P4SyncedTransfer> Transfers { get; set; } = new List<P4SyncedTransfer>();
@@ -52,6 +54,6 @@ namespace P4Sync
     public class SyncHistory
     {
         public SyncProfile? Profile { get; set; }
-        public List<P4SyncTransfers> Syncs { get; set; } = new List<P4SyncTransfers>();
+        public List<P4SyncedTransfers> Syncs { get; set; } = new List<P4SyncedTransfers>();
     }
 }
