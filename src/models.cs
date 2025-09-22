@@ -12,7 +12,6 @@ namespace P4Sync
         Add,
         Edit,
         Delete,
-        Move,
         Skip
     }
 
@@ -48,6 +47,7 @@ namespace P4Sync
     {
         public DateTime SyncTime { get; set; } = DateTime.Now;
         public List<P4SyncedTransfer> Transfers { get; set; } = new List<P4SyncedTransfer>();
+        public int ChangelistNumber { get; set; } = 0;
     }
 
     // class to hold sync profile information and history of sync operations
