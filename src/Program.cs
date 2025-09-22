@@ -39,7 +39,7 @@ IHost CreateHost(string configPath)
             // Configure Serilog
             Log.Logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(context.Configuration)
-                .WriteTo.File("logs/app.log")
+                .WriteTo.File($"logs/app_{DateTime.UtcNow:yyyy-MM-dd}.log", rollingInterval: RollingInterval.Day)
                 .CreateLogger();
 
             // Register services
