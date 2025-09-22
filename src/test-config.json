@@ -27,7 +27,9 @@
       "SyncFilter": [
         "//depot/test-files/....cs",
         "//depot/test-files/....txt"
-      ]
+      ],
+      "AutoSubmit": true,
+      "Description": "[Test] P4Sync end-to-end test from {source_workspace} to {target_workspace} - {now}",
     }
   ]
 }

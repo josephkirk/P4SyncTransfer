@@ -1,5 +1,5 @@
 {
-  "UseExternalP4": true,
+  "UseExternalP4": false,
   "SyncProfiles": [
     {
       "Name": "TestProfile",
@@ -17,7 +17,7 @@
       "Schedule": "0 * * * *",
       "AutoSubmit": true,
       "Description": "[Test] P4Sync end-to-end test from {source_workspace} to {target_workspace} - {now}",
-      "UseExternalP4": true
+      "UseExternalP4": false
     }
   ]
 }
