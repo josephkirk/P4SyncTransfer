@@ -53,6 +53,7 @@ namespace P4Sync
     // class to hold sync profile information and history of sync operations
     public class SyncHistory
     {
+        public string ProfileId { get; set; } = string.Empty;
         public SyncProfile? Profile { get; set; }
         public List<P4SyncedTransfers> Syncs { get; set; } = new List<P4SyncedTransfers>();
     }

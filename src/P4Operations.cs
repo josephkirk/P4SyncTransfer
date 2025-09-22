@@ -14,14 +14,17 @@ namespace P4Sync
     public class P4Operations : IP4Operations
     {
         private readonly ILogger<P4Operations> _logger;
+        private readonly P4SyncHistory _syncHistory;
 
         /// <summary>
         /// Constructor with dependency injection
         /// </summary>
         /// <param name="logger">Logger instance</param>
-        public P4Operations(ILogger<P4Operations> logger)
+        /// <param name="syncHistory">Sync history instance</param>
+        public P4Operations(ILogger<P4Operations> logger, P4SyncHistory syncHistory)
         {
             _logger = logger;
+            _syncHistory = syncHistory;
         }
         /// <summary>
         /// Establishes a connection to a Perforce server and returns both Repository and Connection
@@ -283,6 +286,15 @@ namespace P4Sync
                 }
 
                 _logger.LogInformation("sync for profile {ProfileName} completed.", profile.Name);
+
+                // Log sync history
+                var syncHistory = new SyncHistory
+                {
+                    Profile = profile,
+                    Syncs = new List<P4SyncedTransfers> { syncTransfersRecord }
+                };
+                _syncHistory.LogSync(syncHistory);
+                _logger.LogDebug("Sync history logged for profile {ProfileName}", profile.Name);
             }
             catch (Exception ex)
             {

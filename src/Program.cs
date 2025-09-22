@@ -42,7 +42,7 @@ IHost CreateHost(string configPath)
                 .WriteTo.File("logs/app.log")
                 .CreateLogger();
 
-            // Register configuration
+            // Register services
             services.AddSingleton<IConfiguration>(context.Configuration);
 
             // Register logging
@@ -52,6 +52,9 @@ IHost CreateHost(string configPath)
                 builder.AddConsole();
                 builder.AddSerilog();
             });
+
+            // Register P4SyncHistory
+            services.AddSingleton<P4SyncHistory>(sp => new P4SyncHistory(Path.Combine(Directory.GetCurrentDirectory(), "logs", "history"), enableFileWriting: true));
 
             // Register services
             services.AddTransient<P4Operations>();
