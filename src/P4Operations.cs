@@ -647,12 +647,10 @@ namespace P4Sync
                 if (!isChangelistEmpty)
                 {
                     // Try submitting with the changelist's built-in submit method
-                    ClientSubmitOptions clientOptions = new ClientSubmitOptions(false, SubmitType.RevertUnchanged);
-                    SubmitCmdOptions options = new SubmitCmdOptions(SubmitFilesCmdFlags.None,
-                    changelist.Id, null, changelist.Description, clientOptions);
+                    SubmitCmdOptions submitOpts = new SubmitCmdOptions(SubmitFilesCmdFlags.None, changelist.Id, null, null, new ClientSubmitOptions(false,SubmitType.RevertUnchanged));
                     bool submitSuccess = ExecuteP4OperationWithRetry(repo.Connection, () =>
                     {
-                        changelist.Submit(options);
+                        changelist.Submit(submitOpts);
                         return true;
                     }, "Submitting changelist", changelist.Id.ToString());
                     if (submitSuccess)

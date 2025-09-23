@@ -1,5 +1,5 @@
 {
-  "UseExternalP4": true,
+  "UseExternalP4": false,
   "Logging": {
     "LogLevel": {
       "Default": "Information",
