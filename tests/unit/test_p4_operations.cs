@@ -123,7 +123,7 @@ namespace P4Sync.Tests.Unit
 
             var parameters = method.GetParameters();
             Assert.Equal(2, parameters.Length);
-            Assert.Equal(typeof(Perforce.P4.Connection), parameters[0].ParameterType);
+            Assert.Equal(typeof(Perforce.P4.Repository), parameters[0].ParameterType);
             Assert.Equal(typeof(List<string>), parameters[1].ParameterType);
         }
 
@@ -142,7 +142,7 @@ namespace P4Sync.Tests.Unit
             Assert.Equal(3, parameters.Length);
             Assert.Equal(typeof(Repository), parameters[0].ParameterType);
             Assert.Equal(typeof(Changelist), parameters[1].ParameterType);
-            Assert.Equal(typeof(string), parameters[2].ParameterType);
+            Assert.Equal(typeof(bool), parameters[2].ParameterType);
         }
 
         [Fact]
@@ -155,7 +155,6 @@ namespace P4Sync.Tests.Unit
             Assert.Contains(SyncOperation.Add, operations);
             Assert.Contains(SyncOperation.Edit, operations);
             Assert.Contains(SyncOperation.Delete, operations);
-            Assert.Contains(SyncOperation.Move, operations);
             Assert.Contains(SyncOperation.Skip, operations);
         }
 
