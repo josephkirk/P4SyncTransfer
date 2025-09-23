@@ -137,7 +137,6 @@ void RunP4Sync(string configPath)
                 else
                 {
                     // Execute sync immediately if no schedule
-                    logger.LogDebug("Profile PathMappings: {Mappings}", profile.PathMappings != null ? string.Join(",", profile.PathMappings?.Select(kv => $"{kv.Key}=>{kv.Value}") ?? new[] { "null" }) : "null");
                     ExecuteSync(host.Services, profile);
                 }
             }

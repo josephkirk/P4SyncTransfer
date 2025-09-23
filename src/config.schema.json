@@ -73,23 +73,6 @@
           "default": false,
           "examples": [true, false]
         },
-        "PathMappings": {
-          "type": "object",
-          "patternProperties": {
-            "^//[^/]+/.*": {
-              "type": "string",
-              "pattern": "^//[^/]+/.*",
-              "description": "Target depot path mapping"
-            }
-          },
-          "description": "Dictionary of path mappings for workspace-aware translation. Maps source depot paths to target depot paths. Used when automatic stream-based discovery is insufficient.",
-          "examples": [
-            {
-              "//depot/source/": "//projects/build/",
-              "//depot/main/src/": "//projects/release/bin/"
-            }
-          ]
-        },
         "UseExternalP4": {
           "type": "boolean",
           "description": "Override the global UseExternalP4 setting for this specific profile. Allows different profiles to use different P4 operation modes.",
