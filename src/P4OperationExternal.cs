@@ -122,49 +122,78 @@ namespace P4Sync
 
                 // We get all files we need to process using GetFilteredFiles with the filter patterns
                 _logger.LogDebug("Getting source files");
-                var sourceFiles = GetFilteredFilesExternal(source, filterPatterns);
-                
-                // for each source file, convert them to relative path using source client root then resolve them to absolute path using target client root
-                foreach (var sourceFile in sourceFiles)
-                {
-                    _logger.LogDebug("Processing source file {SourceFile}", sourceFile.DepotPath);
-                    
-                    // Check if file was already synced in last sync (external implementation - simplified check)
-                    // For now, we'll skip this check in external mode as it's complex to implement
-                    
-                    // Convert source depot path to target depot path using path translation
-                    var targetDepotPath = TranslateSourcePathToTarget(sourceFile.DepotPath, profile);
-                    _logger.LogDebug("Mapped source file {SourcePath} to target path {TargetPath}", sourceFile.DepotPath, targetDepotPath);
-                    
-                    // Check if target file exists on target depot
-                    var targetExists = FileExistsOnTarget(target, targetDepotPath);
-                    int expectedTargetHeadRev = targetExists ? GetFileRevision(target, targetDepotPath) + 1 : 1;
-                    _logger.LogDebug("Target file {TargetPath} exists on target depot: {Exists}, expected rev: {Rev}", targetDepotPath, targetExists, expectedTargetHeadRev);
+                var sourceFileList = GetFilteredFilesExternal(source, filterPatterns);
+                var sourceFiles = sourceFileList.ToDictionary(f => f.DepotPath, f => f);
+                _logger.LogDebug("Found {SourceFileCount} source files", sourceFiles.Count);
 
-                    // Determine sync operation based on source file action and target existence
-                    // For external implementation, we assume source files are adds/edits (since we can't get headAction easily)
-                    SyncOperation syncOperation = targetExists ? SyncOperation.Edit : SyncOperation.Add;
+                // Get corresponding files from target (with path translation)
+                _logger.LogDebug("Getting target files for comparison");
+                var targetFilterPatterns = filterPatterns.Select(p => p.Replace("//depot/", "//project/")).ToList();
+                var targetFileList = GetFilteredFilesExternal(target, targetFilterPatterns);
+                var targetFiles = targetFileList.ToDictionary(f => f.DepotPath, f => f);
+                _logger.LogDebug("Found {TargetFileCount} target files", targetFiles.Count);
+
+                // Determine sync operations based on file actions and differences
+                var operations = DetermineSyncOperations(source, target, sourceFiles, targetFiles, profile);
+                _logger.LogDebug("Determined {OperationCount} sync operations", operations.Count);
+
+                // Initialize sync transfer record with proper data
+                syncTransfersRecord.SyncTime = DateTime.Now;
+                syncTransfersRecord.Transfers = new List<P4SyncedTransfer>();
+
+                // Execute sync operations
+                foreach (var operation in operations)
+                {
+                    var sourceDepotPath = operation.Key;
+                    var syncOperation = operation.Value;
+                    
+                    _logger.LogDebug("Processing operation: {SourcePath} -> {Operation}", sourceDepotPath, syncOperation);
+
+                    // Get file information
+                    P4FileInfo? sourceFileInfo = null;
+                    P4FileInfo? targetFileInfo = null;
+                    string targetDepotPath;
+
+                    if (sourceFiles.ContainsKey(sourceDepotPath))
+                    {
+                        sourceFileInfo = sourceFiles[sourceDepotPath];
+                        targetDepotPath = TranslateSourcePathToTarget(sourceDepotPath, profile);
+                        if (targetFiles.ContainsKey(targetDepotPath))
+                        {
+                            targetFileInfo = targetFiles[targetDepotPath];
+                        }
+                    }
+                    else
+                    {
+                        // This shouldn't happen with the new logic, but handle it just in case
+                        targetDepotPath = sourceDepotPath;
+                        if (targetFiles.ContainsKey(targetDepotPath))
+                        {
+                            targetFileInfo = targetFiles[targetDepotPath];
+                        }
+                    }
 
                     // Create sync transfer record
                     var syncTransferRecord = new P4SyncedTransfer
                     {
-                        SourceDepotPath = sourceFile.DepotPath,
-                        SourceLocalPath = ResolveDepotPathToClientFile(source, sourceFile.DepotPath),
+                        SourceDepotPath = sourceDepotPath,
+                        SourceLocalPath = ResolveDepotPathToClientFile(source, sourceDepotPath),
                         TargetDepotPath = targetDepotPath,
                         TargetLocalPath = ResolveDepotPathToClientFile(target, targetDepotPath),
-                        SourceRevision = sourceFile.Revision,
-                        TargetRevision = expectedTargetHeadRev,
-                        SourceAction = "add", // Simplified for external mode
+                        SourceRevision = sourceFileInfo?.Revision ?? 0,
+                        TargetRevision = targetFileInfo?.Revision ?? 0,
+                        SourceAction = sourceFileInfo?.Action ?? "unknown",
                         TargetOperation = syncOperation,
                         ContentHash = string.Empty, // Not available in external mode
                     };
 
-                    bool success = ApplyP4ActionToTargetExternal(source, target, sourceFile.DepotPath, targetDepotPath, syncOperation, changelistId, profile, targetExists);
+                    // Apply the operation
+                    bool success = ApplyP4ActionToTargetExternal(source, target, sourceDepotPath, targetDepotPath, syncOperation, changelistId, profile, targetFileInfo != null);
 
                     if (!success)
                     {
-                        syncTransferRecord.ErrorMessage = $"Failed to apply action {syncOperation} for file {sourceFile.DepotPath} to target {targetDepotPath}";
-                        _logger.LogDebug("Failed to apply action {Action} for file {SourcePath} to target {TargetPath}", syncOperation, sourceFile.DepotPath, targetDepotPath);
+                        syncTransferRecord.ErrorMessage = $"Failed to apply action {syncOperation} for file {sourceDepotPath} to target {targetDepotPath}";
+                        _logger.LogDebug("Failed to apply action {Action} for file {SourcePath} to target {TargetPath}", syncOperation, sourceDepotPath, targetDepotPath);
                     }
                     syncTransferRecord.Success = success;
                     syncTransfersRecord.Transfers.Add(syncTransferRecord);
@@ -337,6 +366,7 @@ namespace P4Sync
         {
             public string DepotPath { get; set; } = string.Empty;
             public int Revision { get; set; }
+            public string Action { get; set; } = string.Empty;
         }
 
         /// <summary>
@@ -772,16 +802,22 @@ namespace P4Sync
                 int.TryParse(fstatData["headRev"], out revision);
             }
 
-            // Only include files that exist (not deleted)
-            if (fstatData.ContainsKey("headAction") && fstatData["headAction"] == "delete")
+            // Get action (headAction takes precedence over action)
+            var action = string.Empty;
+            if (fstatData.ContainsKey("headAction"))
             {
-                return null; // Skip deleted files
+                action = fstatData["headAction"];
+            }
+            else if (fstatData.ContainsKey("action"))
+            {
+                action = fstatData["action"];
             }
 
             return new P4FileInfo
             {
                 DepotPath = depotPath,
-                Revision = revision
+                Revision = revision,
+                Action = action
             };
         }
 
@@ -789,49 +825,88 @@ namespace P4Sync
         /// Determines what sync operations are needed by comparing source and target files with path translation
         /// </summary>
         private Dictionary<string, SyncOperation> DetermineSyncOperations(
+            P4Connection source, P4Connection target,
             Dictionary<string, P4FileInfo> sourceFiles,
             Dictionary<string, P4FileInfo> targetFiles,
             SyncProfile profile)
         {
             var operations = new Dictionary<string, SyncOperation>();
 
-            // Create a mapping from target paths back to source paths for comparison
-            var targetToSourceMapping = new Dictionary<string, string>();
+            // Handle files from source depot based on their actions
             foreach (var sourceFile in sourceFiles)
             {
                 var targetPath = TranslateSourcePathToTarget(sourceFile.Key, profile);
-                targetToSourceMapping[targetPath] = sourceFile.Key;
-            }
+                var action = sourceFile.Value.Action.ToLowerInvariant();
+                
+                _logger.LogDebug("Processing source file {FilePath} with action '{Action}'", sourceFile.Key, action);
 
-            // Files that exist in source but not in target = ADD
-            foreach (var sourceFile in sourceFiles)
-            {
-                var targetPath = TranslateSourcePathToTarget(sourceFile.Key, profile);
-                if (!targetFiles.ContainsKey(targetPath))
+                switch (action)
                 {
-                    operations[sourceFile.Key] = SyncOperation.Add;
-                }
-                else
-                {
-                    // File exists in both - check if it needs updating
-                    var sourceRev = sourceFile.Value.Revision;
-                    var targetRev = targetFiles[targetPath].Revision;
+                    case "add":
+                    case "move/add":
+                        if (!targetFiles.ContainsKey(targetPath))
+                        {
+                            operations[sourceFile.Key] = SyncOperation.Add;
+                        }
+                        else
+                        {
+                            // File exists in both - check if it needs updating
+                            var sourceRev = sourceFile.Value.Revision;
+                            var targetRev = targetFiles[targetPath].Revision;
+                            
+                            if (sourceRev > targetRev)
+                            {
+                                operations[sourceFile.Key] = SyncOperation.Edit;
+                            }
+                        }
+                        break;
 
-                    if (sourceRev > targetRev)
-                    {
-                        operations[sourceFile.Key] = SyncOperation.Edit;
-                    }
-                }
-            }
+                    case "edit":
+                    case "integrate":
+                        if (targetFiles.ContainsKey(targetPath))
+                        {
+                            var sourceRev = sourceFile.Value.Revision;
+                            var targetRev = targetFiles[targetPath].Revision;
+                            
+                            if (sourceRev > targetRev)
+                            {
+                                operations[sourceFile.Key] = SyncOperation.Edit;
+                            }
+                        }
+                        else
+                        {
+                            // File doesn't exist on target, treat as add
+                            operations[sourceFile.Key] = SyncOperation.Add;
+                        }
+                        break;
 
-            // Files that exist in target but not in source = DELETE
-            foreach (var targetFile in targetFiles)
-            {
-                if (!targetToSourceMapping.ContainsKey(targetFile.Key))
-                {
-                    // This target file doesn't correspond to any source file
-                    // We need to map it back to a source path for the operation
-                    operations[targetFile.Key] = SyncOperation.Delete;
+                    case "delete":
+                    case "move/delete":
+                        // For delete operations, we need to check if the target file exists
+                        if (targetFiles.ContainsKey(targetPath))
+                        {
+                            operations[sourceFile.Key] = SyncOperation.Delete;
+                        }
+                        break;
+
+                    default:
+                        // For files without a specific action or unknown actions, determine based on existence and revision
+                        if (!targetFiles.ContainsKey(targetPath))
+                        {
+                            operations[sourceFile.Key] = SyncOperation.Add;
+                        }
+                        else
+                        {
+                            // File exists in both - check if it needs updating
+                            var sourceRev = sourceFile.Value.Revision;
+                            var targetRev = targetFiles[targetPath].Revision;
+                            
+                            if (sourceRev > targetRev)
+                            {
+                                operations[sourceFile.Key] = SyncOperation.Edit;
+                            }
+                        }
+                        break;
                 }
             }
 
@@ -960,6 +1035,10 @@ namespace P4Sync
 
                 if (syncOperation == SyncOperation.Delete)
                 {
+                    // First sync the file to the target workspace (required for delete)
+                    _logger.LogDebug("Syncing target file before delete: {TargetDepotPath}", targetDepotPath);
+                    SyncFileToClientExternal(target, targetDepotPath);
+
                     // Delete the file from target
                     var deleteArgs = new List<string> { "delete" };
                     if (changelistId > 0)
