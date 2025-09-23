@@ -403,56 +403,63 @@ namespace P4Sync
         }
 
         /// <summary>
+        /// Executes a P4 operation with retry logic including connection establishment
+        /// </summary>
+        private bool ExecuteP4OperationWithRetry(Connection connection, Func<bool> operation, string operationType, string target, int maxRetries = 3, int retryDelayMs = 1000)
+        {
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    // Ensure connection is established
+                    if (!connection.connectionEstablished())
+                    {
+                        _logger.LogDebug("Connection not established, attempting to reconnect for {OperationType} {Target}", operationType, target);
+                        connection.Connect(null);
+                        if (!connection.connectionEstablished())
+                        {
+                            _logger.LogDebug("Failed to establish connection for {OperationType} {Target}", operationType, target);
+                            continue; // Retry
+                        }
+                    }
+                    _logger.LogDebug("{OperationType} {Target} to client {ClientName} (attempt {Attempt}/{MaxAttempts})", operationType, target, connection.Client.Name, attempt + 1, maxRetries + 1);
+                    bool result = operation();
+                    if (result)
+                    {
+                        _logger.LogDebug("Successfully {OperationType} {Target} to client", operationType.ToLower(), target);
+                        return true;
+                    }
+                    else
+                    {
+                        _logger.LogDebug("No result for {OperationType} {Target}", operationType.ToLower(), target);
+                        return false; // No retry needed if operation succeeded but no result
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Exception {OperationType} {Target} on attempt {Attempt}/{MaxAttempts}", operationType.ToLower(), target, attempt + 1, maxRetries + 1);
+                    if (attempt == maxRetries)
+                    {
+                        _logger.LogError(ex, "Failed to {OperationType} {Target} after {MaxAttempts} attempts", operationType.ToLower(), target, maxRetries + 1);
+                        return false;
+                    }
+                    // Wait before retrying
+                    System.Threading.Thread.Sleep(retryDelayMs);
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Syncs a file from depot to client workspace using external P4 process with retry logic
         /// </summary>
         private bool SyncFileToClient(Connection connection, string depotPath, SyncFilesCmdFlags syncFilesCmdFlags = SyncFilesCmdFlags.None)
         {
-            const int maxRetries = 3;
-            const int retryDelayMs = 1000; // 1 second delay between retries
-
-            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            return ExecuteP4OperationWithRetry(connection, () =>
             {
-            try
-            {
-                // Ensure connection is established
-                if (!connection.connectionEstablished())
-                {
-                _logger.LogDebug("Connection not established, attempting to reconnect for file {DepotPath}", depotPath);
-                connection.Connect(null);
-                if (!connection.connectionEstablished())
-                {
-                    _logger.LogDebug("Failed to establish connection for file {DepotPath}", depotPath);
-                    continue; // Retry
-                }
-                }
-
-                _logger.LogDebug("Syncing file {DepotPath} to client {ClientName} (attempt {Attempt}/{MaxAttempts})", depotPath, connection.Client.Name, attempt + 1, maxRetries + 1);
                 var syncedfiles = connection.Client.SyncFiles(new SyncFilesCmdOptions(syncFilesCmdFlags), new FileSpec(new DepotPath(depotPath)));
-
-                if (syncedfiles != null && syncedfiles.Count > 0)
-                {
-                _logger.LogDebug("Successfully synced file {DepotPath} to client", depotPath);
-                return true;
-                }
-                else
-                {
-                _logger.LogDebug("No files were synced for {DepotPath}", depotPath);
-                return false; // No retry needed if no files synced (not a connection issue)
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Exception syncing file {DepotPath} on attempt {Attempt}/{MaxAttempts}", depotPath, attempt + 1, maxRetries + 1);
-                if (attempt == maxRetries)
-                {
-                _logger.LogError(ex, "Failed to sync file {DepotPath} after {MaxAttempts} attempts", depotPath, maxRetries + 1);
-                return false;
-                }
-                // Wait before retrying
-                System.Threading.Thread.Sleep(retryDelayMs);
-            }
-            }
-            return false;
+                return syncedfiles != null && syncedfiles.Count > 0;
+            }, "Syncing file", depotPath);
         }
 
 
@@ -643,9 +650,20 @@ namespace P4Sync
                     ClientSubmitOptions clientOptions = new ClientSubmitOptions(false, SubmitType.RevertUnchanged);
                     SubmitCmdOptions options = new SubmitCmdOptions(SubmitFilesCmdFlags.None,
                     changelist.Id, null, changelist.Description, clientOptions);
-                    changelist.Submit(options);
-                    _logger.LogInformation("Submit completed successfully with Changelist {ChangelistId} contains {FileCount} files.", changelist.Id, changelistInfo.Files.Count);
-                    return;
+                    bool submitSuccess = ExecuteP4OperationWithRetry(repo.Connection, () =>
+                    {
+                        changelist.Submit(options);
+                        return true;
+                    }, "Submitting changelist", changelist.Id.ToString());
+                    if (submitSuccess)
+                    {
+                        _logger.LogInformation("Submit completed successfully with Changelist {ChangelistId} contains {FileCount} files.", changelist.Id, changelistInfo.Files.Count);
+                        return;
+                    }
+                    else
+                    {
+                        _logger.LogError("Failed to submit changelist {ChangelistId} after retries", changelist.Id);
+                    }
                 }
                 else
                 {
