@@ -1,6 +1,6 @@
-# My P4Sync Project
+# P4 To P4 Sync Transfer
 
-This is my personal .NET application for syncing files between Perforce servers. I built it to help manage file transfers in my development workflow, with features like filtering, scheduling, and automated submissions.
+A .NET application for syncing files between Perforce servers. The purpose is to help manage file transfers in my development workflow, with features like filtering, scheduling, and automated submissions.
 
 ## What It Does
 
@@ -89,6 +89,6 @@ For full end-to-end testing with p4 servers hosted with podman containers:
 
 ## Why I Made This
 
-I needed a reliable way to sync code between different Perforce environments without manual hassle. This project helps me automate that process and learn more about .NET and Perforce integration.
+I needed a reliable way to sync code between different Perforce environments without manual hassle. 
 
 Feel free to use it or modify it for your own needs!

@@ -403,51 +403,58 @@ namespace P4Sync
         }
 
         /// <summary>
-        /// Syncs a file from depot to client workspace using external P4 process
+        /// Syncs a file from depot to client workspace using external P4 process with retry logic
         /// </summary>
-        private void SyncFileToClient(Connection connection, string depotPath, SyncFilesCmdFlags syncFilesCmdFlags = SyncFilesCmdFlags.None)
+        private bool SyncFileToClient(Connection connection, string depotPath, SyncFilesCmdFlags syncFilesCmdFlags = SyncFilesCmdFlags.None)
         {
+            const int maxRetries = 3;
+            const int retryDelayMs = 1000; // 1 second delay between retries
+
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            {
             try
             {
-                _logger.LogDebug("Syncing file {DepotPath} to client {ClientName}", depotPath, connection.Client.Name);
-                var syncedfiles = connection.Client.SyncFiles( new SyncFilesCmdOptions(syncFilesCmdFlags), new FileSpec(new DepotPath(depotPath)));
+                // Ensure connection is established
+                if (!connection.connectionEstablished())
+                {
+                _logger.LogDebug("Connection not established, attempting to reconnect for file {DepotPath}", depotPath);
+                connection.Connect(null);
+                if (!connection.connectionEstablished())
+                {
+                    _logger.LogDebug("Failed to establish connection for file {DepotPath}", depotPath);
+                    continue; // Retry
+                }
+                }
+
+                _logger.LogDebug("Syncing file {DepotPath} to client {ClientName} (attempt {Attempt}/{MaxAttempts})", depotPath, connection.Client.Name, attempt + 1, maxRetries + 1);
+                var syncedfiles = connection.Client.SyncFiles(new SyncFilesCmdOptions(syncFilesCmdFlags), new FileSpec(new DepotPath(depotPath)));
 
                 if (syncedfiles != null && syncedfiles.Count > 0)
                 {
-                    _logger.LogDebug("Successfully synced file {DepotPath} to client", depotPath);
+                _logger.LogDebug("Successfully synced file {DepotPath} to client", depotPath);
+                return true;
                 }
                 else
                 {
-                    _logger.LogDebug("No files were synced for {DepotPath}", depotPath);
+                _logger.LogDebug("No files were synced for {DepotPath}", depotPath);
+                return false; // No retry needed if no files synced (not a connection issue)
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Exception syncing file {DepotPath}", depotPath);
+                _logger.LogDebug(ex, "Exception syncing file {DepotPath} on attempt {Attempt}/{MaxAttempts}", depotPath, attempt + 1, maxRetries + 1);
+                if (attempt == maxRetries)
+                {
+                _logger.LogError(ex, "Failed to sync file {DepotPath} after {MaxAttempts} attempts", depotPath, maxRetries + 1);
+                return false;
+                }
+                // Wait before retrying
+                System.Threading.Thread.Sleep(retryDelayMs);
             }
+            }
+            return false;
         }
 
-        /// <summary>
-        /// Checks if a file exists on target using external P4 process
-        /// </summary>
-        private bool FileExistsOnTarget(Repository repo, string depotPath)
-        {
-            try
-            {
-                var fileSpecs = repo.GetFileMetaData(new Options(), new FileSpec(new DepotPath(depotPath)));
-                if (fileSpecs == null || fileSpecs.Count == 0)
-                {
-                    _logger.LogDebug("File {DepotPath} does not exist on target", depotPath);
-                    return false;
-                }
-                return fileSpecs[0].HeadRev > 0 || fileSpecs[0].HeadAction != FileAction.Delete || fileSpecs[0].HeadAction != FileAction.MoveDelete;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Exception checking if file exists {DepotPath}", depotPath);
-                return false;
-            }
-        }
 
         /// <summary>
         /// Adds a file to target by copying from source client to target client
@@ -580,22 +587,6 @@ namespace P4Sync
                 _logger.LogDebug("Stack trace: {StackTrace}", ex.StackTrace);
             }
             return isSuccess;
-        }
-
-        /// <summary>
-        /// Converts a Perforce FileAction to a SyncOperation
-        /// </summary>
-        /// <param name="fileAction">The FileAction from Perforce</param>
-        /// <returns>The corresponding SyncOperation</returns>
-        private SyncOperation ConvertFileActionToSyncOperation(FileAction fileAction)
-        {
-            return fileAction switch
-            {
-                FileAction.Add or FileAction.MoveAdd => SyncOperation.Add,
-                FileAction.Edit or FileAction.Integrate => SyncOperation.Edit,
-                FileAction.Delete or FileAction.MoveDelete => SyncOperation.Delete,
-                _ => SyncOperation.Skip
-            };
         }
 
         /// <summary>
