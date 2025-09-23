@@ -2,6 +2,7 @@ using Perforce.P4;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using System.Collections;
@@ -193,7 +194,25 @@ namespace P4Sync
                 foreach (var sourceFile in sourceFiles)
                 {
                     _logger.LogDebug("Processing source file {SourceFile}", sourceFile.DepotPath.Path);
-                    var sourceLocalPath = sourceFile.LocalPath.Path;
+                    // _logger.LogDebug("Processing source file {SourceFile}", JsonSerializer.Serialize(sourceFile));
+                    var sourceLocalPath = "";
+                    if (sourceFile.LocalPath != null)
+                    {
+                        sourceLocalPath = sourceFile.LocalPath.Path;
+                    }
+                    if (string.IsNullOrEmpty(sourceLocalPath))
+                    {
+                        var resolveFileSpec = fromConnection.Client.GetClientFileMappings([new DepotPath(sourceFile.DepotPath.Path)]).FirstOrDefault();
+                        if (resolveFileSpec != null && resolveFileSpec.LocalPath != null)
+                        {
+                            sourceLocalPath = resolveFileSpec.LocalPath.Path;
+                        }
+                    }
+                    if (string.IsNullOrEmpty(sourceLocalPath))
+                    {
+                        _logger.LogDebug("Source file {SourceFile} does not have a valid local path, skipping", sourceFile.DepotPath.Path);
+                        continue;
+                    }
                     var lastSyncForSource = _syncHistory.QueryTransfers(t => t.SourceDepotPath == sourceFile.DepotPath.Path && t.SourceRevision == sourceFile.HeadRev && t.Success).FirstOrDefault();
                     if (lastSyncForSource != null)
                     {
@@ -390,7 +409,7 @@ namespace P4Sync
         {
             try
             {
-
+                _logger.LogDebug("Syncing file {DepotPath} to client {ClientName}", depotPath, connection.Client.Name);
                 var syncedfiles = connection.Client.SyncFiles( new SyncFilesCmdOptions(syncFilesCmdFlags), new FileSpec(new DepotPath(depotPath)));
 
                 if (syncedfiles != null && syncedfiles.Count > 0)
@@ -535,7 +554,7 @@ namespace P4Sync
                         }
                         break;
                     case SyncOperation.Edit:
-                        SyncFileToClient(toConnection, sourceDepotPath, SyncFilesCmdFlags.ServerOnly);
+                        SyncFileToClient(toConnection, targetDepotPath, SyncFilesCmdFlags.ServerOnly);
                         var editfiles = toConnection.Client.EditFiles(new Options(EditFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetLocalPath)));
                         if (editfiles.Count > 0)
                         {
@@ -594,7 +613,7 @@ namespace P4Sync
             {
                 try
                 {
-                    var fileMetaDataOptions = new GetFileMetaDataCmdOptions(GetFileMetadataCmdFlags.FileSize, null, null, 0, null, null);
+                    var fileMetaDataOptions = new GetFileMetaDataCmdOptions(GetFileMetadataCmdFlags.None , null, null, 0, null, null);
                     var fileMetaDatas = repository.GetFileMetaData(fileMetaDataOptions, FileSpec.DepotSpec(pattern));
                     if (fileMetaDatas != null && fileMetaDatas.Count > 0)
                     {
@@ -630,7 +649,10 @@ namespace P4Sync
                 if (!isChangelistEmpty)
                 {
                     // Try submitting with the changelist's built-in submit method
-                    changelist.Submit(new Options());
+                    ClientSubmitOptions clientOptions = new ClientSubmitOptions(false, SubmitType.RevertUnchanged);
+                    SubmitCmdOptions options = new SubmitCmdOptions(SubmitFilesCmdFlags.None,
+                    changelist.Id, null, changelist.Description, clientOptions);
+                    changelist.Submit(options);
                     _logger.LogInformation("Submit completed successfully with Changelist {ChangelistId} contains {FileCount} files.", changelist.Id, changelistInfo.Files.Count);
                     return;
                 }
