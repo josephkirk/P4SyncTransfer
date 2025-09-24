@@ -146,7 +146,6 @@ namespace P4Sync
         {
             try
             {
-                var syncTransfersRecord = new P4SyncedTransfers();
 
                 _logger.LogDebug("ExecuteDirectionalSync started");
                 _logger.LogDebug("fromRepo: {Status}", fromRepo != null ? "OK" : "NULL");
@@ -282,13 +281,12 @@ namespace P4Sync
                     // Log ALL transfers (both successful and failed) to sync history
                     _syncHistory.LogTransfer(syncTransferRecord, profile);
                     
-                    syncTransfersRecord.Transfers.Add(syncTransferRecord);
 
                 }
                 // Submit the changelist if any files were modified and auto-submit is enabled
                 if (toRepo != null && changelist != null && profile.AutoSubmit)
                 {
-                    bool success = SubmitOrDeleteChangelist(toRepo, changelist, syncTransfersRecord.Transfers.Count != 0);
+                    bool success = SubmitOrDeleteChangelist(toRepo, changelist, changelist.Files.Count > 0);
                     if (success) _syncHistory.UpdateLatestUnfinishedChangelistNumber(profile, changelist.Id);                    
                 }
                 else
