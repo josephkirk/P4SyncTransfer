@@ -1534,11 +1534,12 @@ namespace P4Sync
         /// <summary>
         /// Submits a changelist if it has files, otherwise deletes it (interface implementation)
         /// </summary>
-        public void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, bool shouldDeleteChangelist)
+        public bool SubmitOrDeleteChangelist(Repository repo, Changelist changelist, bool shouldDeleteChangelist)
         {
             // For external implementation, we cannot use Repository and Changelist parameters as they require P4 .NET API
             // This method is not supported in external mode. Changelist management is handled internally in ExecuteSync.
-            throw new NotSupportedException("SubmitOrDeleteChangelist with Repository and Changelist parameters is not supported in external P4 mode. Changelist management is handled internally.");
+            // throw new NotSupportedException("SubmitOrDeleteChangelist with Repository and Changelist parameters is not supported in external P4 mode. Changelist management is handled internally.");
+            return false;
         }
 
         /// <summary>

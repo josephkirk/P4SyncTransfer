@@ -22,13 +22,5 @@ namespace P4Sync
         /// <param name="filterPatterns">Filter patterns to apply</param>
         /// <returns>List of filtered files</returns>
         List<FileMetaData> GetFilteredFiles(Repository repository, List<string> filterPatterns);
-
-        /// <summary>
-        /// Submits a changelist if it has files, otherwise deletes it
-        /// </summary>
-        /// <param name="repo">Repository instance</param>
-        /// <param name="changelist">Changelist to submit or delete</param>
-        /// <param name="shouldDeleteChangelist">Indicates whether to delete the changelist</param>
-        void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, bool shouldDeleteChangelist);
     }
 }

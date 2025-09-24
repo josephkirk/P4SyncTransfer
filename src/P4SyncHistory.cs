@@ -136,13 +136,216 @@ namespace P4Sync
         /// <summary>
         /// Gets the latest sync for a specific profile
         /// </summary>
-        /// <param name="profileName">Name of the profile</param>
+        /// <param name="profile">The sync profile</param>
         /// <returns>The latest sync transfers or null if not found</returns>
-        public P4SyncedTransfers? GetLatestSync(string profileName)
+        public P4SyncedTransfers? GetLatestSync(SyncProfile profile)
         {
+            var profileId = ComputeProfileId(profile);
             var histories = LoadAllHistories();
-            var profileHistory = histories.FirstOrDefault(h => h.Profile?.Name == profileName);
+            var profileHistory = histories.FirstOrDefault(h => h.ProfileId == profileId);
             return profileHistory?.Syncs.OrderByDescending(s => s.SyncTime).FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Logs a single transfer to the latest unfinished transfers (changelist=0) for the specified profile.
+        /// If no unfinished transfers exist, creates new transfers to log the transfer.
+        /// </summary>
+        /// <param name="transfer">The transfer to log</param>
+        /// <param name="profile">The sync profile</param>
+        public void LogTransfer(P4SyncedTransfer transfer, SyncProfile profile)
+        {
+            if (!enableFileWriting) return;
+
+            var profileId = ComputeProfileId(profile);
+            var today = DateTime.Now.Date;
+            var histories = LoadHistoriesForDate(today);
+            
+            // Find the history for this profile
+            var profileHistory = histories.FirstOrDefault(h => h.ProfileId == profileId);
+            
+            if (profileHistory == null)
+            {
+                // Create a new profile history with full profile info
+                profileHistory = new SyncHistory
+                {
+                    ProfileId = profileId,
+                    Profile = profile,
+                    Syncs = new List<P4SyncedTransfers>()
+                };
+                histories.Add(profileHistory);
+            }
+            else
+            {
+                // CRITICAL FIX: Update the profile info in case it has changed
+                profileHistory.Profile = profile;
+            }
+
+            // Find the latest unfinished transfers (ChangelistNumber = 0)
+            var unfinishedTransfers = profileHistory.Syncs
+                .Where(s => s.ChangelistNumber == 0)
+                .OrderByDescending(s => s.SyncTime)
+                .FirstOrDefault();
+
+            if (unfinishedTransfers == null)
+            {
+                // Create new transfers to log this transfer
+                unfinishedTransfers = new P4SyncedTransfers
+                {
+                    SyncTime = DateTime.Now,
+                    ChangelistNumber = 0,
+                    Transfers = new List<P4SyncedTransfer>()
+                };
+                profileHistory.Syncs.Add(unfinishedTransfers);
+            }
+
+            // Add the transfer to the unfinished transfers
+            unfinishedTransfers.Transfers.Add(transfer);
+
+            // Save the updated histories (this preserves all existing syncs)
+            SaveHistoriesForDate(histories, today);
+        }
+
+        /// <summary>
+        /// Logs a single transfer to the latest unfinished transfers (changelist=0) for the specified SyncHistory.
+        /// If no unfinished transfers exist, creates new transfers to log the transfer.
+        /// </summary>
+        /// <param name="transfer">The transfer to log</param>
+        /// <param name="syncHistory">The sync history to update</param>
+        public void LogTransfer(P4SyncedTransfer transfer, SyncHistory syncHistory)
+        {
+            if (!enableFileWriting || syncHistory?.Syncs == null) return;
+
+            // Find the latest unfinished transfers (ChangelistNumber = 0)
+            var unfinishedTransfers = syncHistory.Syncs
+                .Where(s => s.ChangelistNumber == 0)
+                .OrderByDescending(s => s.SyncTime)
+                .FirstOrDefault();
+
+            if (unfinishedTransfers == null)
+            {
+                // Create new transfers to log this transfer
+                unfinishedTransfers = new P4SyncedTransfers
+                {
+                    SyncTime = DateTime.Now,
+                    ChangelistNumber = 0,
+                    Transfers = new List<P4SyncedTransfer>()
+                };
+                syncHistory.Syncs.Add(unfinishedTransfers);
+            }
+
+            // Add the transfer to the unfinished transfers
+            unfinishedTransfers.Transfers.Add(transfer);
+
+            // Determine which date file to save to based on the sync time
+            var syncDate = unfinishedTransfers.SyncTime.Date;
+            var histories = LoadHistoriesForDate(syncDate);
+            
+            // Find and update the corresponding history in the loaded histories
+            var existingHistory = histories.FirstOrDefault(h => h.ProfileId == syncHistory.ProfileId);
+            if (existingHistory != null)
+            {
+                // Find the corresponding sync in the existing history
+                var existingSync = existingHistory.Syncs.FirstOrDefault(s => s.SyncTime == unfinishedTransfers.SyncTime && s.ChangelistNumber == unfinishedTransfers.ChangelistNumber);
+                if (existingSync != null)
+                {
+                    // Update the existing sync with all transfers from the in-memory object
+                    existingSync.Transfers = unfinishedTransfers.Transfers;
+                }
+                else
+                {
+                    // If the sync doesn't exist in the file, add it
+                    existingHistory.Syncs.Add(unfinishedTransfers);
+                }
+            }
+            else
+            {
+                // If the history doesn't exist in the file, add it
+                histories.Add(syncHistory);
+            }
+
+            // Save the updated histories
+            SaveHistoriesForDate(histories, syncDate);
+        }
+
+        /// <summary>
+        /// Updates the ChangelistNumber of the latest unfinished P4SyncedTransfers for the specified profile.
+        /// If no latest unfinished transfers are found, the operation is skipped.
+        /// </summary>
+        /// <param name="profile">The sync profile</param>
+        /// <param name="changelistNumber">The changelist number to set</param>
+        /// <returns>True if the update was successful, false if no unfinished transfers were found</returns>
+        public bool UpdateLatestUnfinishedChangelistNumber(SyncProfile profile, int changelistNumber)
+        {
+            if (!enableFileWriting) return false;
+
+            var profileId = ComputeProfileId(profile);
+            var today = DateTime.Now.Date;
+            var histories = LoadHistoriesForDate(today);
+            
+            // Find the history for this profile
+            var profileHistory = histories.FirstOrDefault(h => h.ProfileId == profileId);
+            
+            if (profileHistory == null) return false;
+
+            // Find the latest unfinished transfers (ChangelistNumber = 0)
+            var unfinishedTransfers = profileHistory.Syncs
+                .Where(s => s.ChangelistNumber == 0)
+                .OrderByDescending(s => s.SyncTime)
+                .FirstOrDefault();
+
+            if (unfinishedTransfers == null) return false;
+
+            // Update the changelist number
+            unfinishedTransfers.ChangelistNumber = changelistNumber;
+
+            // Save the updated histories
+            SaveHistoriesForDate(histories, today);
+            
+            return true;
+        }
+
+        /// <summary>
+        /// Updates the ChangelistNumber of the latest unfinished P4SyncedTransfers for the specified SyncHistory.
+        /// If no latest unfinished transfers are found, the operation is skipped.
+        /// </summary>
+        /// <param name="syncHistory">The sync history to update</param>
+        /// <param name="changelistNumber">The changelist number to set</param>
+        /// <returns>True if the update was successful, false if no unfinished transfers were found</returns>
+        public bool UpdateLatestUnfinishedChangelistNumber(SyncHistory syncHistory, int changelistNumber)
+        {
+            if (!enableFileWriting || syncHistory?.Syncs == null) return false;
+
+            // Find the latest unfinished transfers (ChangelistNumber = 0)
+            var unfinishedTransfers = syncHistory.Syncs
+                .Where(s => s.ChangelistNumber == 0)
+                .OrderByDescending(s => s.SyncTime)
+                .FirstOrDefault();
+
+            if (unfinishedTransfers == null) return false;
+
+            // Update the changelist number
+            unfinishedTransfers.ChangelistNumber = changelistNumber;
+
+            // Determine which date file to save to based on the sync time
+            var syncDate = unfinishedTransfers.SyncTime.Date;
+            var histories = LoadHistoriesForDate(syncDate);
+            
+            // Find and update the corresponding history in the loaded histories
+            var existingHistory = histories.FirstOrDefault(h => h.ProfileId == syncHistory.ProfileId);
+            if (existingHistory != null)
+            {
+                // Update the existing history with the modified sync history
+                var existingSync = existingHistory.Syncs.FirstOrDefault(s => s == unfinishedTransfers);
+                if (existingSync != null)
+                {
+                    existingSync.ChangelistNumber = changelistNumber;
+                }
+            }
+
+            // Save the updated histories
+            SaveHistoriesForDate(histories, syncDate);
+            
+            return true;
         }
 
         /// <summary>
@@ -150,7 +353,7 @@ namespace P4Sync
         /// </summary>
         /// <param name="profile">The sync profile</param>
         /// <returns>Profile ID as string</returns>
-        private string ComputeProfileId(SyncProfile? profile)
+        public string ComputeProfileId(SyncProfile? profile)
         {
             if (profile == null) return string.Empty;
             var json = JsonSerializer.Serialize(profile);

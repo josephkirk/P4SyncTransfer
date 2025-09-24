@@ -278,14 +278,18 @@ namespace P4Sync
                         _logger.LogDebug("Failed to apply action {Action} for file {SourcePath} to target {TargetPath}", syncOperation, sourceFile.DepotPath.Path, targetDepotPath);
                     }
                     syncTransferRecord.Success = success;
+                    
+                    // Log ALL transfers (both successful and failed) to sync history
+                    _syncHistory.LogTransfer(syncTransferRecord, profile);
+                    
                     syncTransfersRecord.Transfers.Add(syncTransferRecord);
 
                 }
-                syncTransfersRecord.ChangelistNumber = changelist != null ? changelist.Id : 0;
                 // Submit the changelist if any files were modified and auto-submit is enabled
                 if (toRepo != null && changelist != null && profile.AutoSubmit)
                 {
-                    SubmitOrDeleteChangelist(toRepo, changelist, syncTransfersRecord.Transfers.Count != 0);
+                    bool success = SubmitOrDeleteChangelist(toRepo, changelist, syncTransfersRecord.Transfers.Count != 0);
+                    if (success) _syncHistory.UpdateLatestUnfinishedChangelistNumber(profile, changelist.Id);                    
                 }
                 else
                 {
@@ -301,21 +305,6 @@ namespace P4Sync
 
                 // Log sync operations summary
                 _logger.LogInformation("sync completed.");
-                
-
-                // Log sync history
-                if (syncTransfersRecord.Transfers.Count > 0)
-                {
-
-                    _logger.LogInformation("sync for profile {ProfileName} completed.", profile.Name);
-                    var syncHistory = new SyncHistory
-                    {
-                        Profile = profile,
-                        Syncs = new List<P4SyncedTransfers> { syncTransfersRecord }
-                    };
-                    _syncHistory.LogSync(syncHistory);
-                    _logger.LogDebug("Sync history logged for profile {ProfileName}", profile.Name);
-                }
                 
             }
             catch (Exception ex)
@@ -638,7 +627,7 @@ namespace P4Sync
         /// <param name="repo">Repository instance</param>
         /// <param name="changelist">Changelist to submit or delete</param>
         /// <param name="direction">Direction description for logging</param>
-        public void SubmitOrDeleteChangelist(Repository repo, Changelist changelist, bool shouldDeleteChangelist)
+        public bool SubmitOrDeleteChangelist(Repository repo, Changelist changelist, bool shouldDeleteChangelist)
         {
             try
             {
@@ -647,7 +636,7 @@ namespace P4Sync
                 if (!isChangelistEmpty)
                 {
                     // Try submitting with the changelist's built-in submit method
-                    SubmitCmdOptions submitOpts = new SubmitCmdOptions(SubmitFilesCmdFlags.None, changelist.Id, null, null, new ClientSubmitOptions(false,SubmitType.RevertUnchanged));
+                    SubmitCmdOptions submitOpts = new SubmitCmdOptions(SubmitFilesCmdFlags.None, changelist.Id, null, null, new ClientSubmitOptions(false, SubmitType.RevertUnchanged));
                     bool submitSuccess = ExecuteP4OperationWithRetry(repo.Connection, () =>
                     {
                         changelist.Submit(submitOpts);
@@ -656,29 +645,30 @@ namespace P4Sync
                     if (submitSuccess)
                     {
                         _logger.LogInformation("Submit completed successfully with Changelist {ChangelistId} contains {FileCount} files.", changelist.Id, changelistInfo.Files.Count);
-                        return;
                     }
                     else
                     {
                         _logger.LogError("Failed to submit changelist {ChangelistId} after retries", changelist.Id);
                     }
+                    return submitSuccess;
                 }
                 else
                 {
                     _logger.LogInformation("No files in changelist {ChangelistId}.", changelist.Id);
-
                 }
                 if (shouldDeleteChangelist || isChangelistEmpty)
                 {
                     // Delete the empty changelist
-                    repo.DeleteChangelist(changelistInfo,null);
+                    repo.DeleteChangelist(changelistInfo, null);
                     _logger.LogDebug("Deleted empty changelist {ChangelistId}", changelist.Id);
+                    return true;
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error submitting changelist {ChangelistId}", changelist.Id);
             }
+            return false;
         }
 
 
