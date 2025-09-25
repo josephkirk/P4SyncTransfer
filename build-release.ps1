@@ -51,10 +51,7 @@ if ($UseDocker) {
 Write-Host "Packaging build output..."
 # Collect files: DLLs, EXEs, configs, and optionally README
 $filesToInclude = @( 
-    "$buildOutputDir\*.dll",
-    "$buildOutputDir\*.exe",
-    "$buildOutputDir\*.json",
-    "$buildOutputDir\*.config",
+    "$buildOutputDir\*",
     "README.md"
 )
 
