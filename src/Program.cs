@@ -59,6 +59,7 @@ IHost CreateHost(string configPath, string logDirectory)
             // Register services
             services.AddTransient<P4Operations>();
             services.AddTransient<Scheduler>();
+            services.AddTransient<FileComparer>();
 
             // Register IP4Operations
             services.AddTransient<IP4Operations, P4Operations>();

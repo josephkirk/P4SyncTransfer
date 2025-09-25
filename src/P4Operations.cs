@@ -16,16 +16,19 @@ namespace P4Sync
     {
         private readonly ILogger<P4Operations> _logger;
         private readonly P4SyncHistory _syncHistory;
+        private readonly FileComparer _fileComparer;
 
         /// <summary>
         /// Constructor with dependency injection
         /// </summary>
         /// <param name="logger">Logger instance</param>
         /// <param name="syncHistory">Sync history instance</param>
-        public P4Operations(ILogger<P4Operations> logger, P4SyncHistory syncHistory)
+        /// <param name="fileComparer">File comparer instance</param>
+        public P4Operations(ILogger<P4Operations> logger, P4SyncHistory syncHistory, FileComparer fileComparer)
         {
             _logger = logger;
             _syncHistory = syncHistory;
+            _fileComparer = fileComparer;
         }
         /// <summary>
         /// Establishes a connection to a Perforce server and returns both Repository and Connection
@@ -247,6 +250,9 @@ namespace P4Sync
                     }
                     _logger.LogDebug("Resolved target file {TargetPath} exists on target depot: {Exists}", targetDepotPath, isTargetExistOnDepot);
 
+                    // Sync source file to workspace for comparison
+                    SyncFileToClient(fromConnection, sourceFile.DepotPath.Path);
+
                     // Determine sync operation based on source file action and target existence
                     FileAction sourceHeadAction = sourceFile.HeadAction;
                     SyncOperation syncOperation = sourceHeadAction switch
@@ -254,6 +260,20 @@ namespace P4Sync
                         FileAction.Delete or FileAction.MoveDelete => isTargetExistOnDepot ? SyncOperation.Delete : SyncOperation.Skip,
                         _ => isTargetExistOnDepot ? SyncOperation.Edit : SyncOperation.Add
                     };
+
+                    // For Edit operations, check if files are identical to avoid unnecessary sync
+                    if (syncOperation == SyncOperation.Edit)
+                    {
+                        // Sync target file to workspace for comparison
+                        SyncFileToClient(toConnection, targetDepotPath);
+
+                        if (_fileComparer.AreFilesIdentical(sourceLocalPath, targetAbsolutePath))
+                        {
+
+                            _logger.LogDebug("Source and target files are identical, skipping sync for {SourcePath}", sourceFile.DepotPath.Path);
+                            continue;
+                        }
+                    }
 
                     // Create sync transfer record
                     var syncTransferRecord = new P4SyncedTransfer
@@ -503,7 +523,7 @@ namespace P4Sync
 
                 
                 // Sync the source file to source client workspace
-                SyncFileToClient(fromConnection, sourceDepotPath);
+                // SyncFileToClient(fromConnection, sourceDepotPath);
 
 
                 if (!System.IO.File.Exists(sourceLocalPath))
@@ -555,7 +575,7 @@ namespace P4Sync
                         }
                         break;
                     case SyncOperation.Edit:
-                        SyncFileToClient(toConnection, targetDepotPath, SyncFilesCmdFlags.ServerOnly);
+                        // SyncFileToClient(toConnection, targetDepotPath, SyncFilesCmdFlags.ServerOnly);
                         var editfiles = toConnection.Client.EditFiles(new Options(EditFilesCmdFlags.None, changelist.Id, null), new FileSpec(new LocalPath(targetLocalPath)));
                         if (editfiles.Count > 0)
                         {

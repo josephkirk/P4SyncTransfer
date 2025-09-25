@@ -92,6 +92,12 @@ function Test-PerforceConnection {
 
 function Setup-ClientWorkspaces {
     try {
+        # Create target workspace directory
+        $targetWorkspaceDir = Join-Path $PSScriptRoot "target-workspace"
+        if (-not (Test-Path $targetWorkspaceDir)) {
+            New-Item -ItemType Directory -Path $targetWorkspaceDir -Force
+        }
+
         # Create source workspace
         Write-Host "Creating source workspace 'testworkspace'..." -ForegroundColor Yellow
         $sourceClientSpec = @"
@@ -134,7 +140,7 @@ Host:
 Description:
         Created by P4Sync end-to-end test.
 
-Root: $PSScriptRoot
+Root: $PSScriptRoot\target-workspace
 
 Options:        noallwrite noclobber nocompress unlocked nomodtime normdir
 
@@ -165,6 +171,9 @@ function Setup-InitialTestData {
         # Clean up existing test files first
         Write-Host "Cleaning up existing test files..." -ForegroundColor Yellow
         $testFilesDir = Join-Path $PSScriptRoot "test-files"
+        $targetWorkspaceDir = Join-Path $PSScriptRoot "target-workspace"
+        
+        # Clean source workspace files
         if (Test-Path $testFilesDir) {
             Get-ChildItem -Path $testFilesDir -Recurse -Force | ForEach-Object {
                 if ($_.PSIsContainer) {
@@ -176,6 +185,20 @@ function Setup-InitialTestData {
                 }
             }
             Remove-Item -Path $testFilesDir -Recurse -Force
+        }
+
+        # Clean target workspace files
+        if (Test-Path $targetWorkspaceDir) {
+            Get-ChildItem -Path $targetWorkspaceDir -Recurse -Force | ForEach-Object {
+                if ($_.PSIsContainer) {
+                    # Remove read-only attribute from directories
+                    $_.Attributes = $_.Attributes -band -bnot [System.IO.FileAttributes]::ReadOnly
+                } else {
+                    # Remove read-only attribute from files
+                    $_.Attributes = $_.Attributes -band -bnot [System.IO.FileAttributes]::ReadOnly
+                }
+            }
+            Remove-Item -Path $targetWorkspaceDir -Recurse -Force
         }
 
         # Create test-files directory
@@ -464,6 +487,144 @@ function Test-SyncResults {
     }
 
     return $allTestsPassed
+}
+
+function Test-EditFileOperation {
+    Write-TestStep "Testing edit file operation and performance with large files"
+
+    try {
+        # Set up client for source server operations
+        Write-Host "Setting up client for source server operations..." -ForegroundColor Yellow
+        $clientSetup = & p4 -p $SourcePort -u admin -c testworkspace info 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to set up client for source server: $clientSetup"
+            return $false
+        }
+
+        # Edit an existing file
+        $fileToEdit = "//depot/test-files/TestClass.cs"
+        Write-Host "Editing file: $fileToEdit" -ForegroundColor Yellow
+
+        # Open file for edit
+        $editResult = & p4 -p $SourcePort -u admin -c testworkspace edit $fileToEdit 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to open file for edit: $editResult"
+            return $false
+        }
+
+        # Modify the file content
+        $localFilePath = Join-Path $PSScriptRoot "test-files\TestClass.cs"
+        $newContent = @"
+public class TestClass {
+    // Modified content for edit test
+    public string ModifiedProperty { get; set; } = "Edited";
+
+    public void ModifiedMethod() {
+        Console.WriteLine("This file has been modified");
+    }
+}
+"@
+        $newContent | Out-File -FilePath $localFilePath -Encoding UTF8 -Force
+
+        # Submit the edit
+        Write-Host "Submitting file edit..." -ForegroundColor Yellow
+        $submitResult = & p4 -p $SourcePort -u admin -c testworkspace submit -f submitunchanged -d "Edit test file" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to submit edit: $submitResult"
+            return $false
+        }
+
+        Write-Success "File edited successfully on source server"
+
+        # Run sync to propagate edit
+        Write-Host "Running sync to propagate edit operation..." -ForegroundColor Yellow
+        $syncResult = Invoke-EndToEndSyncTest
+        if (-not $syncResult) {
+            Write-Error "Sync failed after edit operation"
+            return $false
+        }
+
+        # Verify the edit was propagated to target
+        Write-Host "Verifying edit was propagated to target..." -ForegroundColor Yellow
+        $targetFileContent = & p4 -p $TargetPort -u admin -c workspace print "//project/test-files/TestClass.cs" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to get target file content"
+            return $false
+        }
+
+        if ($targetFileContent -match "ModifiedProperty" -and $targetFileContent -match "ModifiedMethod") {
+            Write-Success "File edit successfully propagated to target server"
+        } else {
+            Write-Error "File edit was not propagated correctly to target server"
+            return $false
+        }
+
+        # Test with large file for performance
+        Write-Host "Creating 1GB test file for performance testing..." -ForegroundColor Yellow
+        $largeFilePath = Join-Path $PSScriptRoot "test-files\large-test-file.dat"
+
+        # Create a 1GB file (using fsutil for efficiency)
+        $fsutilResult = & fsutil file createnew $largeFilePath 1073741824 2>&1  # 1GB = 1073741824 bytes
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to create large test file: $fsutilResult"
+            return $false
+        }
+
+        # Add the large file to Perforce
+        Write-Host "Adding large file to Perforce..." -ForegroundColor Yellow
+        $addResult = & p4 -p $SourcePort -u admin -c testworkspace add $largeFilePath 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to add large file to Perforce: $addResult"
+            return $false
+        }
+
+        # Submit the large file
+        Write-Host "Submitting large file..." -ForegroundColor Yellow
+        $submitStartTime = Get-Date
+        $submitResult = & p4 -p $SourcePort -u admin -c testworkspace submit -f submitunchanged -d "Add large test file for performance testing" 2>&1
+        $submitEndTime = Get-Date
+        $submitDuration = $submitEndTime - $submitStartTime
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to submit large file: $submitResult"
+            return $false
+        }
+
+        Write-Host "Large file submitted in $($submitDuration.TotalSeconds) seconds" -ForegroundColor Cyan
+
+        # Run sync with large file
+        Write-Host "Running sync with large file..." -ForegroundColor Yellow
+        $syncStartTime = Get-Date
+        $syncResult = Invoke-EndToEndSyncTest
+        $syncEndTime = Get-Date
+        $syncDuration = $syncEndTime - $syncStartTime
+
+        if (-not $syncResult) {
+            Write-Error "Sync failed with large file"
+            return $false
+        }
+
+        Write-Host "Large file sync completed in $($syncDuration.TotalSeconds) seconds" -ForegroundColor Cyan
+
+        # Verify large file was synced
+        Write-Host "Verifying large file was synced to target..." -ForegroundColor Yellow
+        $targetLargeFile = & p4 -p $TargetPort -u admin -c workspace files "//project/test-files/large-test-file.dat" 2>&1
+        if ($LASTEXITCODE -ne 0 -or -not ($targetLargeFile -match "large-test-file.dat")) {
+            Write-Error "Large file was not synced to target server"
+            return $false
+        }
+
+        Write-Success "Large file successfully synced to target server"
+        Write-Host "Performance metrics:" -ForegroundColor Cyan
+        Write-Host "  - File submission time: $($submitDuration.TotalSeconds) seconds" -ForegroundColor Cyan
+        Write-Host "  - Sync time: $($syncDuration.TotalSeconds) seconds" -ForegroundColor Cyan
+
+        return $true
+
+    } catch {
+        Write-Error "Error testing edit file operation: $($_.Exception.Message)"
+        return $false
+    }
 }
 
 function Stop-TestEnvironment {
@@ -775,10 +936,13 @@ $testResults += @{ Name = "End-to-End Sync"; Result = Invoke-EndToEndSyncTest }
 # Test 5: Results Verification
 $testResults += @{ Name = "Sync Results"; Result = Test-SyncResults }
 
-# Test 6: Delete File Operation
+# Test 6: Edit File Operation and Performance
+$testResults += @{ Name = "Edit File Operation"; Result = Test-EditFileOperation }
+
+# Test 7: Delete File Operation
 $testResults += @{ Name = "Delete File Operation"; Result = Test-DeleteFileOperation }
 
-# Test 7: Move/Rename File Operation
+# Test 8: Move/Rename File Operation
 $testResults += @{ Name = "Move/Rename File Operation"; Result = Test-MoveRenameFileOperation }
 
 # Cleanup
@@ -802,7 +966,7 @@ foreach ($test in $testResults) {
 Write-Host "`nOverall Result: $($passedTests)/$totalTests tests passed" -ForegroundColor $(if ($passedTests -eq $totalTests) { "Green" } else { "Red" })
 
 if ($passedTests -eq $totalTests) {
-    Write-Success "All tests passed! P4Sync end-to-end synchronization is working correctly, including delete and move/rename operations."
+    Write-Success "All tests passed! P4Sync end-to-end synchronization is working correctly, including edit operations, performance testing, delete and move/rename operations."
     exit 0
 } else {
     Write-Error "Some tests failed. Check the output above for details."
