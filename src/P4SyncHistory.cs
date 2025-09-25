@@ -59,10 +59,10 @@ namespace P4Sync
         /// <returns>List of all sync histories</returns>
         public List<SyncHistory> LoadAllHistories()
         {
-            if (!enableFileWriting)
-                return new List<SyncHistory>();
-
             var allHistories = new List<SyncHistory>();
+            if (!Directory.Exists(historyDirectory))
+                return allHistories;
+
             var files = Directory.GetFiles(historyDirectory, "sync_history_*.json");
             foreach (var file in files)
             {

@@ -10,8 +10,9 @@ A .NET application for syncing files between Perforce servers. The purpose is to
 - Can run automatically with cron-like scheduling
 - Handles path mappings between different workspaces
 - Auto-submits changes to keep things tidy
-- Tracks sync history in JSON files (stored in `logs/history/`)
-- Logs operations to daily files (in `logs/app_YYYY-MM-DD.log` format)
+- Tracks sync history in JSON files (stored in `logs/history/` or custom directory)
+- Logs operations to daily files (in `logs/app_YYYY-MM-DD.log` format or custom directory)
+- Query sync history with filtering and detailed transfer information
 - Works with embedded P4 library or external p4.exe
 
 ## Getting Started
@@ -44,12 +45,13 @@ A .NET application for syncing files between Perforce servers. The purpose is to
 
 ## Usage
 
-- **Sync files**: `dotnet run sync --config your-config.json`
-- **Create config**: `dotnet run init --output config.json`
-- **Validate config**: `dotnet run validate-config --config config.json`
-- **List profiles**: `dotnet run list-profiles --config config.json`
+- **Sync files**: `P4Sync sync --config your-config.json [--logs <directory>]`
+- **Create config**: `P4Sync init --output config.json`
+- **Validate config**: `P4Sync validate-config --config config.json`
+- **List profiles**: `P4Sync list-profiles --config config.json`
+- **Query history**: `P4Sync query-history [--logs <directory>] [--profile <name>] [--date <yyyy-MM-dd>] [--limit <n>] [--transfers]`
 
-Check `dotnet run --help` for more options.
+Check `P4Sync --help` for more options.
 
 ## Configuration
 
@@ -61,18 +63,45 @@ Key parts:
 - `Schedule`: Cron expressions for timing
 - `AutoSubmit`: Set to true for automatic changelist submission
 
+### Log Directory
+
+By default, logs and history are stored in `./logs` relative to the current working directory. You can specify a custom log directory using the `--logs <directory>` option with sync and query-history commands.
+
 ## Sync History
 
 The application tracks detailed sync history in JSON format to help with auditing, debugging, and operation tracking:
 
-- **Location**: Stored in `logs/history/` directory with daily files
+- **Location**: Stored in `logs/history/` directory with daily files (or custom directory via `--logs`)
 - **Contents**: Each sync operation records source/target paths, file operations (add/edit/delete), revisions, content hashes, and success/failure status
-- **Usage**: 
+- **Querying History**: Use the `query-history` command to view and filter sync history:
+  - `--logs <directory>`: Specify custom log directory (default: `./logs`)
+  - `--profile <name>`: Filter by sync profile name
+  - `--date <yyyy-MM-dd>`: Show history for specific date
+  - `--limit <n>`: Limit number of results (default: 10)
+  - `--transfers`: Show detailed file transfer information
+
+- **Usage**:
   - **Prevents redundant transfers**: Avoids syncing files that have already been processed at the head revision
   - Audit what files were synced and when
   - Debug sync issues by reviewing operation details
   - Track changelist numbers for submitted changes
   - Monitor sync success/failure rates
+
+### Examples
+
+```bash
+# View recent sync history
+P4Sync query-history
+
+# View history for specific profile
+P4Sync query-history --profile "My Profile"
+
+# View history for today with transfer details
+P4Sync query-history --date 2025-09-25 --transfers
+
+# View history from custom log directory
+P4Sync query-history --logs /var/log/p4sync --limit 5
+```
 
 ## Testing
 

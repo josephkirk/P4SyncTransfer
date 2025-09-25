@@ -219,9 +219,40 @@ namespace P4Sync.Tests.Integration
             // Assert
             Assert.Equal(1, exitCode);
         }
+
+        [Fact]
+        public async Task QueryHistoryCommand_WithValidHistoryFile_ReturnsHistory()
+        {
+            // Arrange
+            var testLogsDir = Path.Combine(_testProjectDir, "logs");
+            var historyDir = Path.Combine(testLogsDir, "history");
+            Directory.CreateDirectory(historyDir);
+
+            // Copy the test history file from the project root
+            // The test assembly is in tests/bin/Debug/net9.0/, so go up 4 levels to get to project root
+            var assemblyDir = AppContext.BaseDirectory;
+            var projectRoot = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", "..", ".."));
+            var sourceHistoryFile = Path.Combine(projectRoot, "tests", "logs", "history", "sync_history_2025-09-25.json");
+            var targetHistoryFile = Path.Combine(historyDir, "sync_history_2025-09-25.json");
+            
+            if (File.Exists(sourceHistoryFile))
+            {
+                File.Copy(sourceHistoryFile, targetHistoryFile, true);
+                Assert.True(File.Exists(targetHistoryFile), $"History file should exist at {targetHistoryFile}");
+            }
+            else
+            {
+                Assert.Fail($"Source history file not found at {sourceHistoryFile}");
+            }
+
+            // Act
+            var exitCode = CliTestHelper.RunQueryHistoryCommand(testLogsDir);
+
+            // Assert
+            Assert.Equal(0, exitCode);
+        }
     }
 
-    // Helper class to test CLI commands without external dependencies
     internal static class CliTestHelper
     {
         public static int RunInitCommand(string outputPath)
@@ -345,6 +376,44 @@ namespace P4Sync.Tests.Integration
 
                 var appConfig = configuration.Get<AppConfig>();
                 return appConfig != null ? 0 : 1;
+            }
+            catch
+            {
+                return 1;
+            }
+        }
+
+        public static int RunQueryHistoryCommand(string logsDir)
+        {
+            try
+            {
+                // Get the project root directory (where the .sln file is)
+                var assemblyDir = AppContext.BaseDirectory;
+                var projectRoot = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", "..", ".."));
+                
+                // Use Process to run the actual CLI command
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "dotnet",
+                        Arguments = $"run --project src query-history --logs \"{logsDir}\"",
+                        WorkingDirectory = projectRoot,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                process.Start();
+                
+                // Read output for debugging
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                
+                process.WaitForExit();
+                return process.ExitCode;
             }
             catch
             {

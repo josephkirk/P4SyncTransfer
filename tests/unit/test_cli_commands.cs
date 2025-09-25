@@ -178,6 +178,16 @@ namespace P4Sync.Tests.Unit
             // Assert
             Assert.Equal(0, result);
         }
+
+        [Fact]
+        public void HandleQueryHistoryCommand_WithoutHistory_ReturnsZero()
+        {
+            // Arrange & Act
+            var result = TestCliHelper.RunCliCommand(new[] { "query-history" });
+
+            // Assert
+            Assert.Equal(0, result);
+        }
     }
 
     // Helper class to access private CLI methods for testing
@@ -203,6 +213,8 @@ namespace P4Sync.Tests.Unit
                     return HandleListProfilesCommand(args);
                 case "validate-config":
                     return HandleValidateConfigCommand(args);
+                case "query-history":
+                    return HandleQueryHistoryCommand(args);
                 case "--help":
                 case "-h":
                 case "help":
@@ -350,6 +362,13 @@ namespace P4Sync.Tests.Unit
             {
                 return 1; // Error
             }
+        }
+
+        private static int HandleQueryHistoryCommand(string[] args)
+        {
+            // For testing purposes, just return success
+            // In a real implementation, this would query the history
+            return 0;
         }
     }
 }

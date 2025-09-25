@@ -1,0 +1,110 @@
+[
+  {
+    "ProfileId": "61ca6f53-00c9-d99f-302d-c3e7872b71eb",
+    "Profile": {
+      "Name": "EndToEndTestProfile",
+      "Source": {
+        "Port": "localhost:1666",
+        "User": "admin",
+        "Workspace": "testworkspace"
+      },
+      "Target": {
+        "Port": "localhost:1667",
+        "User": "admin",
+        "Workspace": "workspace"
+      },
+      "SyncFilter": [
+        "//depot/test-files/....cs",
+        "//depot/test-files/....txt"
+      ],
+      "Schedule": null,
+      "AutoSubmit": true,
+      "Description": "[Test] P4Sync end-to-end test from {source_workspace} to {target_workspace} - {now}"
+    },
+    "Syncs": [
+      {
+        "SyncTime": "2025-09-25T07:46:31.321762+07:00",
+        "Transfers": [
+          {
+            "SourceDepotPath": "//depot/test-files/TestClass.cs",
+            "SourceLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\TestClass.cs",
+            "TargetDepotPath": "//project/test-files/TestClass.cs",
+            "TargetLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\TestClass.cs",
+            "SourceAction": "Add",
+            "SourceRevision": 1,
+            "TargetRevision": 1,
+            "TargetOperation": 0,
+            "ContentHash": "",
+            "Success": true,
+            "ErrorMessage": ""
+          },
+          {
+            "SourceDepotPath": "//depot/test-files/readme.txt",
+            "SourceLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\readme.txt",
+            "TargetDepotPath": "//project/test-files/readme.txt",
+            "TargetLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\readme.txt",
+            "SourceAction": "Add",
+            "SourceRevision": 1,
+            "TargetRevision": 1,
+            "TargetOperation": 0,
+            "ContentHash": "",
+            "Success": true,
+            "ErrorMessage": ""
+          }
+        ],
+        "ChangelistNumber": 1
+      },
+      {
+        "SyncTime": "2025-09-25T07:46:36.6122632+07:00",
+        "Transfers": [
+          {
+            "SourceDepotPath": "//depot/test-files/readme.txt",
+            "SourceLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\readme.txt",
+            "TargetDepotPath": "//project/test-files/readme.txt",
+            "TargetLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\readme.txt",
+            "SourceAction": "Delete",
+            "SourceRevision": 2,
+            "TargetRevision": 2,
+            "TargetOperation": 2,
+            "ContentHash": "",
+            "Success": true,
+            "ErrorMessage": ""
+          }
+        ],
+        "ChangelistNumber": 2
+      },
+      {
+        "SyncTime": "2025-09-25T07:46:42.0338746+07:00",
+        "Transfers": [
+          {
+            "SourceDepotPath": "//depot/test-files/move-test.txt",
+            "SourceLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\move-test.txt",
+            "TargetDepotPath": "//project/test-files/move-test.txt",
+            "TargetLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\move-test.txt",
+            "SourceAction": "MoveDelete",
+            "SourceRevision": 2,
+            "TargetRevision": 1,
+            "TargetOperation": 3,
+            "ContentHash": "",
+            "Success": true,
+            "ErrorMessage": ""
+          },
+          {
+            "SourceDepotPath": "//depot/test-files/moved-file.txt",
+            "SourceLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\moved-file.txt",
+            "TargetDepotPath": "//project/test-files/moved-file.txt",
+            "TargetLocalPath": "G:\\Projects\\Dev\\P4Sync\\P4SyncTransfer\\tests\\deploy\\test-files\\moved-file.txt",
+            "SourceAction": "MoveAdd",
+            "SourceRevision": 1,
+            "TargetRevision": 1,
+            "TargetOperation": 0,
+            "ContentHash": "",
+            "Success": true,
+            "ErrorMessage": ""
+          }
+        ],
+        "ChangelistNumber": 3
+      }
+    ]
+  }
+]

@@ -23,11 +23,11 @@ if (args.Length > 0)
 else
 {
     // Backward compatibility: run with default config
-    RunP4Sync("config.json");
+    RunP4Sync("config.json", Path.Combine(Directory.GetCurrentDirectory(), "logs"));
 }
 
 // Create host with dependency injection and logging
-IHost CreateHost(string configPath)
+IHost CreateHost(string configPath, string logDirectory)
 {
     return Host.CreateDefaultBuilder()
         .ConfigureAppConfiguration((context, config) =>
@@ -54,7 +54,7 @@ IHost CreateHost(string configPath)
             });
 
             // Register P4SyncHistory
-            services.AddSingleton<P4SyncHistory>(sp => new P4SyncHistory(Path.Combine(Directory.GetCurrentDirectory(), "logs", "history"), enableFileWriting: true));
+            services.AddSingleton<P4SyncHistory>(sp => new P4SyncHistory(Path.Combine(logDirectory, "history"), enableFileWriting: true));
 
             // Register services
             services.AddTransient<P4Operations>();
@@ -67,12 +67,12 @@ IHost CreateHost(string configPath)
 }
 
 // Main function to run P4Sync with the configuration file
-void RunP4Sync(string configPath)
+void RunP4Sync(string configPath, string logDirectory)
 {
     try
     {
         // Create host with logging and DI
-        var host = CreateHost(configPath);
+        var host = CreateHost(configPath, logDirectory);
         var logger = host.Services.GetRequiredService<ILogger<Program>>();
 
         logger.LogInformation("Using configuration file: {ConfigPath}", configPath);
@@ -239,6 +239,8 @@ int RunCli(string[] args)
             return HandleListProfilesCommand(args);
         case "validate-config":
             return HandleValidateConfigCommand(args);
+        case "query-history":
+            return HandleQueryHistoryCommand(args);
         case "--help":
         case "-h":
         case "help":
@@ -254,8 +256,9 @@ int RunCli(string[] args)
 int HandleSyncCommand(string[] args)
 {
     var configFile = "config.json";
+    var logDirectory = Path.Combine(Directory.GetCurrentDirectory(), "logs");
 
-    // Parse --config option
+    // Parse options
     for (int i = 1; i < args.Length; i++)
     {
         if (args[i] == "--config" && i + 1 < args.Length)
@@ -263,11 +266,16 @@ int HandleSyncCommand(string[] args)
             configFile = args[i + 1];
             i++; // Skip the next argument
         }
+        else if (args[i] == "--logs" && i + 1 < args.Length)
+        {
+            logDirectory = args[i + 1];
+            i++; // Skip the next argument
+        }
     }
 
     try
     {
-        RunP4Sync(configFile);
+        RunP4Sync(configFile, logDirectory);
         return 0;
     }
     catch (Exception ex)
@@ -421,23 +429,167 @@ int HandleValidateConfigCommand(string[] args)
     }
 }
 
+int HandleQueryHistoryCommand(string[] args)
+{
+    var configFile = "config.json";
+    string? profileName = null;
+    DateTime? date = null;
+    int limit = 10;
+    bool showTransfers = false;
+    var logDirectory = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+
+    // Parse options
+    for (int i = 1; i < args.Length; i++)
+    {
+        switch (args[i])
+        {
+            case "--config":
+                if (i + 1 < args.Length)
+                {
+                    configFile = args[i + 1];
+                    i++;
+                }
+                break;
+            case "--profile":
+                if (i + 1 < args.Length)
+                {
+                    profileName = args[i + 1];
+                    i++;
+                }
+                break;
+            case "--date":
+                if (i + 1 < args.Length)
+                {
+                    if (DateTime.TryParse(args[i + 1], out var parsedDate))
+                    {
+                        date = parsedDate.Date;
+                    }
+                    i++;
+                }
+                break;
+            case "--limit":
+                if (i + 1 < args.Length)
+                {
+                    if (int.TryParse(args[i + 1], out var parsedLimit))
+                    {
+                        limit = parsedLimit;
+                    }
+                    i++;
+                }
+                break;
+            case "--logs":
+                if (i + 1 < args.Length)
+                {
+                    logDirectory = args[i + 1];
+                    i++;
+                }
+                break;
+            case "--transfers":
+                showTransfers = true;
+                break;
+        }
+    }
+
+    try
+    {
+        // Create history manager
+        var historyDir = Path.Combine(logDirectory, "history");
+        var historyManager = new P4SyncHistory(historyDir, enableFileWriting: false);
+
+        // Load all histories
+        var allHistories = historyManager.LoadAllHistories();
+
+        if (!allHistories.Any())
+        {
+            Console.WriteLine("No sync history found.");
+            return 0;
+        }
+
+        // Filter by profile if specified
+        if (!string.IsNullOrEmpty(profileName))
+        {
+            allHistories = allHistories.Where(h => h.Profile?.Name?.Equals(profileName, StringComparison.OrdinalIgnoreCase) == true).ToList();
+        }
+
+        if (!allHistories.Any())
+        {
+            Console.WriteLine($"No sync history found for profile '{profileName}'.");
+            return 0;
+        }
+
+        // Display results
+        foreach (var history in allHistories)
+        {
+            Console.WriteLine($"Profile: {history.Profile?.Name ?? "Unknown"}");
+            Console.WriteLine($"Profile ID: {history.ProfileId}");
+
+            var syncs = history.Syncs.OrderByDescending(s => s.SyncTime).AsEnumerable();
+
+            // Filter by date if specified
+            if (date.HasValue)
+            {
+                syncs = syncs.Where(s => s.SyncTime.Date == date.Value);
+            }
+
+            // Apply limit
+            syncs = syncs.Take(limit);
+
+            foreach (var sync in syncs)
+            {
+                Console.WriteLine($"  Sync Time: {sync.SyncTime:yyyy-MM-dd HH:mm:ss}");
+                Console.WriteLine($"  Changelist: {sync.ChangelistNumber}");
+                Console.WriteLine($"  Transfers: {sync.Transfers.Count}");
+
+                if (showTransfers)
+                {
+                    foreach (var transfer in sync.Transfers)
+                    {
+                        Console.WriteLine($"    - {transfer.SourceDepotPath} -> {transfer.TargetDepotPath} ({transfer.TargetOperation})");
+                        if (!string.IsNullOrEmpty(transfer.ErrorMessage))
+                        {
+                            Console.WriteLine($"      Error: {transfer.ErrorMessage}");
+                        }
+                    }
+                }
+                Console.WriteLine();
+            }
+            Console.WriteLine();
+        }
+
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error querying history: {ex.Message}");
+        return 1;
+    }
+}
+
 void ShowHelp()
 {
     Console.WriteLine("P4Sync - Perforce repository synchronization tool");
     Console.WriteLine();
     Console.WriteLine("Commands:");
-    Console.WriteLine("  sync [--config <file>]              Execute synchronization based on configuration");
-    Console.WriteLine("  init [--output <file>]              Create a configuration template");
-    Console.WriteLine("  list-profiles [--config <file>]     Display available sync profiles");
-    Console.WriteLine("  validate-config [--config <file>]   Validate configuration file");
-    Console.WriteLine("  help                                Show this help message");
+    Console.WriteLine("  sync [--config <file>] [--logs <dir>]    Execute synchronization based on configuration");
+    Console.WriteLine("  init [--output <file>]                   Create a configuration template");
+    Console.WriteLine("  list-profiles [--config <file>]          Display available sync profiles");
+    Console.WriteLine("  validate-config [--config <file>]        Validate configuration file");
+    Console.WriteLine("  query-history [options]                  Query sync operation history");
+    Console.WriteLine("  help                                     Show this help message");
     Console.WriteLine();
     Console.WriteLine("Options:");
-    Console.WriteLine("  --config <file>                     Path to configuration file (default: config.json)");
-    Console.WriteLine("  --output <file>                     Output path for generated files (default: config.json)");
+    Console.WriteLine("  --config <file>                          Path to configuration file (default: config.json)");
+    Console.WriteLine("  --output <file>                          Output path for generated files (default: config.json)");
+    Console.WriteLine("  --logs <dir>                             Directory for logs and history (default: ./logs)");
+    Console.WriteLine("  --profile <name>                         Filter history by profile name");
+    Console.WriteLine("  --date <yyyy-MM-dd>                      Filter history by specific date");
+    Console.WriteLine("  --limit <n>                              Limit number of results (default: 10)");
+    Console.WriteLine("  --transfers                              Show detailed transfer information");
     Console.WriteLine();
     Console.WriteLine("Examples:");
     Console.WriteLine("  dotnet run init --output myconfig.json");
     Console.WriteLine("  dotnet run list-profiles --config myconfig.json");
-    Console.WriteLine("  dotnet run sync --config myconfig.json");
+    Console.WriteLine("  dotnet run sync --config myconfig.json --logs /var/log/p4sync");
+    Console.WriteLine("  dotnet run query-history --profile \"My Profile\" --limit 5");
+    Console.WriteLine("  dotnet run query-history --date 2025-09-25 --transfers --logs /var/log/p4sync");
 }
