@@ -169,8 +169,8 @@ namespace P4Sync.Tests.Unit
             Assert.True(ratio1 >= 1.5 && ratio1 <= 3.0, $"Time ratio 512MB/256MB: {ratio1:F2}, expected ~2.0");
             Assert.True(ratio2 >= 1.5 && ratio2 <= 3.0, $"Time ratio 1GB/512MB: {ratio2:F2}, expected ~2.0");
 
-            // Overall: 1GB comparison should complete in reasonable time (under 60 seconds)
-            Assert.True(times[2] < 60000, $"1GB comparison took {times[2]}ms, expected < 60000ms");
+            // Overall: 1GB comparison should complete in under 3 seconds (optimized with parallel MD5 hashing)
+            Assert.True(times[2] < 3000, $"1GB comparison took {times[2]}ms, expected < 3000ms");
         }
 
         private void CreateLargeFile(string filePath, long size)

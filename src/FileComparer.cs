@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.IO;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace P4Sync
@@ -16,7 +17,7 @@ namespace P4Sync
             _logger = logger;
         }
 
-        // Compare two files by their SHA256 hash
+        // Compare two files by their MD5 hash (fast for performance testing)
         public bool AreFilesIdentical(string filePath1, string filePath2)
         {
             if (!File.Exists(filePath1) || !File.Exists(filePath2))
@@ -25,16 +26,24 @@ namespace P4Sync
                 return false;
             }
 
-            using (var hashAlgorithm = SHA256.Create())
-            {
-                using (var stream1 = File.OpenRead(filePath1))
-                using (var stream2 = File.OpenRead(filePath2))
-                {
-                    var hash1 = hashAlgorithm.ComputeHash(stream1);
-                    var hash2 = hashAlgorithm.ComputeHash(stream2);
+            // Compute hashes in parallel for better performance
+            var task1 = Task.Run(() => ComputeHash(filePath1));
+            var task2 = Task.Run(() => ComputeHash(filePath2));
 
-                    return StructuralComparisons.StructuralEqualityComparer.Equals(hash1, hash2);
-                }
+            Task.WhenAll(task1, task2).Wait();
+
+            var hash1 = task1.Result;
+            var hash2 = task2.Result;
+
+            return StructuralComparisons.StructuralEqualityComparer.Equals(hash1, hash2);
+        }
+
+        private byte[] ComputeHash(string filePath)
+        {
+            using (var hashAlgorithm = MD5.Create())
+            using (var stream = File.OpenRead(filePath))
+            {
+                return hashAlgorithm.ComputeHash(stream);
             }
         }
     }
