@@ -20,7 +20,6 @@ A .NET application for syncing files between Perforce servers. The purpose is to
 ### Requirements
 
 - .NET 9.0 SDK
-- Access to Perforce servers (p4.exe if using external mode)
 
 ### Setup
 
@@ -54,6 +53,46 @@ A .NET application for syncing files between Perforce servers. The purpose is to
 Check `P4Sync --help` for more options.
 
 ## Configuration
+
+
+Example Config , sync and transfer all *.cs and *.txt files from perforce:1666 from perforce:1667, run at 9pm everyday and auto submit changelist
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "P4Sync": "Debug"
+    },
+    "Console": {
+      "FormatterName": "simple",
+      "IncludeScopes": false
+    }
+  },
+  "SyncProfiles": [
+    {
+      "Name": "Default Sync",
+      "Source": {
+        "Port": "perforce:1666",
+        "User": "source_user",
+        "Workspace": "source_workspace"
+      },
+      "Target": {
+        "Port": "perforce:1667",
+        "User": "target_user",
+        "Workspace": "target_workspace"
+      },
+      "SyncFilter": [
+        "//depot/main/....cs",
+        "//depot/main/....txt"
+      ],
+      "Schedule": "0 21 * * *",
+      "AutoSubmit": true,
+      "Description": "[Auto] P4 Sync Transfer from {source_workspace} to {target_workspace} - {now}"
+    }
+  ]
+}
+```
 
 Edit `config.json` to set up your Perforce servers, filters, and schedules. There are example configs in the `src/` folder.
 
