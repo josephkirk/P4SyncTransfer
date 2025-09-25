@@ -19,6 +19,12 @@ if (!(Test-Path $releaseDir)) {
     New-Item -ItemType Directory -Path $releaseDir | Out-Null
 }
 
+# Create release solution with only src project
+Write-Host "Creating release solution with only src project..."
+if (Test-Path "P4Sync.sln") { Remove-Item "P4Sync.sln" }
+dotnet new sln --name P4Sync
+dotnet sln P4Sync.sln add src/P4Sync.csproj
+
 if ($UseDocker) {
     Write-Host "Building solution in $configuration mode using Docker..."
     
