@@ -15,7 +15,7 @@ param(
 # Configuration
 $SourcePort = "localhost:1666"
 $TargetPort = "localhost:1667"
-$TestConfigPath = Join-Path $PSScriptRoot "..\..\src\test-config.json"
+$TestConfigPath = Join-Path $PSScriptRoot "..\test-config.json"
 $P4SyncBinary = Join-Path $PSScriptRoot "..\..\src\bin\Debug\net9.0\P4Sync.exe"
 
 # Test data configuration
