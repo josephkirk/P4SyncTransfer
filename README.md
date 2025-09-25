@@ -60,7 +60,6 @@ Key parts:
 - `SyncFilter`: Perforce filespec patterns like `//depot/main/....cs` for C# files
 - `Schedule`: Cron expressions for timing
 - `AutoSubmit`: Set to true for automatic changelist submission
-- `UseExternalP4`: Choose between embedded P4 library (false) or external p4.exe (true)
 
 ## Sync History
 

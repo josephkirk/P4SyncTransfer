@@ -5,12 +5,6 @@
   "version": "2.0.0",
   "type": "object",
   "properties": {
-    "UseExternalP4": {
-      "type": "boolean",
-      "description": "Whether to use external p4.exe instead of embedded P4 library. External mode provides better performance and compatibility with complex Perforce configurations but requires p4.exe to be installed. Embedded mode offers better portability but may have limitations with advanced Perforce features.",
-      "default": true,
-      "examples": [true, false]
-    },
     "Filters": {
       "type": "array",
       "items": {
@@ -71,11 +65,6 @@
           "type": "boolean",
           "description": "Automatically submit changelists after sync operations. When enabled, all file operations (add/edit/delete) will be automatically submitted with descriptive changelist messages. Default is false for safety.",
           "default": false,
-          "examples": [true, false]
-        },
-        "UseExternalP4": {
-          "type": "boolean",
-          "description": "Override the global UseExternalP4 setting for this specific profile. Allows different profiles to use different P4 operation modes.",
           "examples": [true, false]
         },
         "Description": {

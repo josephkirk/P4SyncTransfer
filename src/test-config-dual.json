@@ -10,7 +10,6 @@
     }
   },
   "Filters": null,
-  "UseExternalP4": false,
   "SyncProfiles": [
     {
       "Name": "EmbeddedP4TestProfile",
@@ -31,7 +30,6 @@
     },
     {
       "Name": "ExternalP4TestProfile",
-      "UseExternalP4": true,
       "Source": {
         "Port": "localhost:1666",
         "User": "admin",

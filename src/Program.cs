@@ -58,25 +58,10 @@ IHost CreateHost(string configPath)
 
             // Register services
             services.AddTransient<P4Operations>();
-            services.AddTransient<P4OperationExternal>();
             services.AddTransient<Scheduler>();
 
-            // Register IP4Operations based on configuration
-            services.AddTransient<IP4Operations>(sp =>
-            {
-                var config = sp.GetRequiredService<IConfiguration>();
-                var useExternal = config.GetValue<bool>("UseExternalP4");
-                var logger = sp.GetRequiredService<ILogger<IP4Operations>>();
-
-                if (useExternal)
-                {
-                    return sp.GetRequiredService<P4OperationExternal>();
-                }
-                else
-                {
-                    return sp.GetRequiredService<P4Operations>();
-                }
-            });
+            // Register IP4Operations
+            services.AddTransient<IP4Operations, P4Operations>();
         })
         .Build();
 }

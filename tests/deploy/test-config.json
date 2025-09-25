@@ -1,5 +1,4 @@
 {
-  "UseExternalP4": false,
   "SyncProfiles": [
     {
       "Name": "TestProfile",
@@ -16,8 +15,7 @@
       "SyncFilter": ["//depot/test-files/..."],
       "Schedule": "0 * * * *",
       "AutoSubmit": true,
-      "Description": "[Test] P4Sync end-to-end test from {source_workspace} to {target_workspace} - {now}",
-      "UseExternalP4": false
+      "Description": "[Test] P4Sync end-to-end test from {source_workspace} to {target_workspace} - {now}"
     }
   ]
 }

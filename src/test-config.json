@@ -10,7 +10,6 @@
     }
   },
   "Filters": null,
-  "UseExternalP4": false,
   "SyncProfiles": [
     {
       "Name": "EndToEndTestProfile",
@@ -29,7 +28,7 @@
         "//depot/test-files/....txt"
       ],
       "AutoSubmit": true,
-      "Description": "[Test] P4Sync end-to-end test from {source_workspace} to {target_workspace} - {now}",
+      "Description": "[Test] P4Sync end-to-end test from {source_workspace} to {target_workspace} - {now}"
     }
   ]
 }

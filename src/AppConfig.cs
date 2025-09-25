@@ -25,6 +25,5 @@ namespace P4Sync
         public string[]? Filters { get; set; }
         public List<SyncProfile>? SyncProfiles { get; set; }
         public LoggingConfiguration? Logging { get; set; }
-        public bool UseExternalP4 { get; set; } = true; // Default to using external P4 executable
     }
 }
