@@ -1,0 +1,39 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Build release
+      run: .\build-release.ps1
+      shell: pwsh
+
+    - name: Get release package
+      id: get-package
+      run: |
+        $package = Get-ChildItem -Path release -Filter "*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        echo "package_path=$($package.FullName)" >> $env:GITHUB_OUTPUT
+        echo "package_name=$($package.Name)" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ${{ steps.get-package.outputs.package_path }}
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
