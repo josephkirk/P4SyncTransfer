@@ -147,6 +147,61 @@ namespace P4Sync
         }
 
         /// <summary>
+        /// Logs multiple transfers in a single batch operation to minimize disk I/O
+        /// </summary>
+        /// <param name="transfers">List of transfers to log</param>
+        /// <param name="profile">The sync profile</param>
+        public void LogTransferBatch(List<P4SyncedTransfer> transfers, SyncProfile profile)
+        {
+            if (!enableFileWriting || transfers == null || transfers.Count == 0) return;
+
+            var profileId = ComputeProfileId(profile);
+            var today = DateTime.Now.Date;
+            var histories = LoadHistoriesForDate(today);
+            
+            // Find or create the history for this profile
+            var profileHistory = histories.FirstOrDefault(h => h.ProfileId == profileId);
+            if (profileHistory == null)
+            {
+                profileHistory = new SyncHistory
+                {
+                    ProfileId = profileId,
+                    Profile = profile,
+                    Syncs = new List<P4SyncedTransfers>()
+                };
+                histories.Add(profileHistory);
+            }
+            else
+            {
+                // Update the profile info in case it has changed
+                profileHistory.Profile = profile;
+            }
+
+            // Find or create unfinished transfers
+            var unfinishedTransfers = profileHistory.Syncs
+                .Where(s => s.ChangelistNumber == 0)
+                .OrderByDescending(s => s.SyncTime)
+                .FirstOrDefault();
+
+            if (unfinishedTransfers == null)
+            {
+                unfinishedTransfers = new P4SyncedTransfers
+                {
+                    SyncTime = DateTime.Now,
+                    ChangelistNumber = 0,
+                    Transfers = new List<P4SyncedTransfer>()
+                };
+                profileHistory.Syncs.Add(unfinishedTransfers);
+            }
+
+            // Add all transfers at once
+            unfinishedTransfers.Transfers.AddRange(transfers);
+
+            // Single write operation for all transfers
+            SaveHistoriesForDate(histories, today);
+        }
+
+        /// <summary>
         /// Logs a single transfer to the latest unfinished transfers (changelist=0) for the specified profile.
         /// If no unfinished transfers exist, creates new transfers to log the transfer.
         /// </summary>

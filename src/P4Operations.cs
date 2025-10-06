@@ -161,6 +161,32 @@ namespace P4Sync
                 var sourceWorkspace = new WorkspaceInfo();
                 var targetWorkspace = new WorkspaceInfo();
 
+                // PHASE 1 OPTIMIZATION: Pre-load history cache to avoid repeated disk reads
+                _logger.LogInformation("Loading sync history into memory cache...");
+                var historyCache = new Dictionary<(string, int), P4SyncedTransfer>();
+                if (profile.EnableInMemoryHistoryCache)
+                {
+                    var startTime = DateTime.Now;
+                    var recentTransfers = _syncHistory.QueryTransfers(t => t.Success);
+                    foreach (var transfer in recentTransfers)
+                    {
+                        var key = (transfer.SourceDepotPath ?? "", transfer.SourceRevision);
+                        if (!historyCache.ContainsKey(key))
+                        {
+                            historyCache[key] = transfer;
+                        }
+                    }
+                    var loadTime = DateTime.Now - startTime;
+                    _logger.LogInformation("Loaded {Count} historical transfers into cache in {Duration}ms", 
+                        historyCache.Count, loadTime.TotalMilliseconds);
+                }
+                else
+                {
+                    _logger.LogDebug("History cache disabled by configuration");
+                }
+
+                // PHASE 1 OPTIMIZATION: Collect transfers for batch logging
+                var transferBatch = new List<P4SyncedTransfer>();
 
                 // Create changelist for the sync
                 _logger.LogDebug("Creating changelist");
@@ -215,12 +241,16 @@ namespace P4Sync
                         _logger.LogDebug("Source file {SourceFile} does not have a valid local path, skipping", sourceFile.DepotPath.Path);
                         continue;
                     }
-                    var lastSyncForSource = _syncHistory.QueryTransfers(t => t.SourceDepotPath == sourceFile.DepotPath.Path && t.SourceRevision == sourceFile.HeadRev && t.Success).FirstOrDefault();
-                    if (lastSyncForSource != null)
+                    
+                    // PHASE 1 OPTIMIZATION: Check cache instead of querying history for each file
+                    var cacheKey = (sourceFile.DepotPath.Path, sourceFile.HeadRev);
+                    if (profile.EnableInMemoryHistoryCache && historyCache.ContainsKey(cacheKey))
                     {
-                        _logger.LogDebug("File {SourceFile} at revision {SourceRev} was already synced in last sync, skipping", sourceFile.DepotPath.Path, sourceFile.HeadRev);
+                        _logger.LogDebug("File {SourceFile} at revision {SourceRev} was already synced (cached), skipping", 
+                            sourceFile.DepotPath.Path, sourceFile.HeadRev);
                         continue;
                     }
+                    
                     // Convert source local path to relative path using source client root
                     var sourceRelativePath = Path.GetRelativePath(fromClient.Root, sourceLocalPath);
 
@@ -264,13 +294,42 @@ namespace P4Sync
                     // For Edit operations, check if files are identical to avoid unnecessary sync
                     if (syncOperation == SyncOperation.Edit)
                     {
-                        // Sync target file to workspace for comparison
-                        SyncFileToClient(toConnection, targetDepotPath);
-
-                        if (_fileComparer.AreFilesIdentical(sourceLocalPath, targetAbsolutePath))
+                        // PHASE 1 OPTIMIZATION: Use P4 digest comparison first (no file I/O needed)
+                        bool filesAreIdentical = false;
+                        
+                        if (profile.UseDigestComparison && 
+                            !string.IsNullOrEmpty(sourceFile.Digest) && 
+                            targetFileSpecs != null && 
+                            targetFileSpecs.Count > 0 &&
+                            !string.IsNullOrEmpty(targetFileSpecs[0].Digest))
                         {
+                            // Compare using Perforce digest (MD5) - no file I/O needed
+                            filesAreIdentical = sourceFile.Digest.Equals(targetFileSpecs[0].Digest, StringComparison.OrdinalIgnoreCase);
+                            if (filesAreIdentical)
+                            {
+                                _logger.LogDebug("Source and target files have identical digest, skipping sync for {SourcePath}", 
+                                    sourceFile.DepotPath.Path);
+                            }
+                        }
+                        else
+                        {
+                            // Fallback to file comparison if digest not available or disabled
+                            _logger.LogDebug("Digest comparison not available, falling back to file comparison for {SourcePath}", 
+                                sourceFile.DepotPath.Path);
+                            
+                            // Sync target file to workspace for comparison
+                            SyncFileToClient(toConnection, targetDepotPath);
 
-                            _logger.LogDebug("Source and target files are identical, skipping sync for {SourcePath}", sourceFile.DepotPath.Path);
+                            filesAreIdentical = _fileComparer.AreFilesIdentical(sourceLocalPath, targetAbsolutePath);
+                            if (filesAreIdentical)
+                            {
+                                _logger.LogDebug("Source and target files are identical (file comparison), skipping sync for {SourcePath}", 
+                                    sourceFile.DepotPath.Path);
+                            }
+                        }
+                        
+                        if (filesAreIdentical)
+                        {
                             continue;
                         }
                     }
@@ -298,11 +357,18 @@ namespace P4Sync
                     }
                     syncTransferRecord.Success = success;
                     
-                    // Log ALL transfers (both successful and failed) to sync history
-                    _syncHistory.LogTransfer(syncTransferRecord, profile);
-                    
-
+                    // PHASE 1 OPTIMIZATION: Collect transfer for batch logging instead of individual writes
+                    transferBatch.Add(syncTransferRecord);
                 }
+                
+                // PHASE 1 OPTIMIZATION: Batch log all transfers at the end (single disk write)
+                if (transferBatch.Count > 0)
+                {
+                    _logger.LogInformation("Logging {Count} transfers to history...", transferBatch.Count);
+                    _syncHistory.LogTransferBatch(transferBatch, profile);
+                    _logger.LogInformation("Successfully logged {Count} transfers in batch", transferBatch.Count);
+                }
+                
                 // Submit the changelist if any files were modified and auto-submit is enabled
                 if (toRepo != null && changelist != null && profile.AutoSubmit)
                 {
@@ -618,8 +684,8 @@ namespace P4Sync
             {
                 try
                 {
-                    var fileMetaDataOptions = new GetFileMetaDataCmdOptions(GetFileMetadataCmdFlags.None , null, null, 0, null, null);
-                    var fileMetaDatas = repository.GetFileMetaData(fileMetaDataOptions, FileSpec.DepotSpec(pattern));
+                    // var fileMetaDataOptions = new GetFileMetaDataCmdOptions(GetFileMetadataCmdFlags.None , null, null, 0, null, null);
+                    var fileMetaDatas = repository.GetFileMetaData(new Options(), FileSpec.DepotSpec(pattern));
                     if (fileMetaDatas != null && fileMetaDatas.Count > 0)
                     {
                         filteredFiles.AddRange(fileMetaDatas);

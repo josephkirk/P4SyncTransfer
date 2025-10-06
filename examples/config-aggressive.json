@@ -1,0 +1,36 @@
+{
+  "$schema": "../src/config.schema.json",
+  "SyncProfiles": [
+    {
+      "Name": "Production-Aggressive",
+      "Source": {
+        "Port": "source-server:1666",
+        "User": "sync_user",
+        "Workspace": "source_workspace"
+      },
+      "Target": {
+        "Port": "target-server:1666",
+        "User": "sync_user",
+        "Workspace": "target_workspace"
+      },
+      "SyncFilter": [
+        "//depot/main/..."
+      ],
+      "AutoSubmit": true,
+      "Description": "[Auto] High-performance sync from {source_server} at {now}",
+      
+      "_comment": "Aggressive settings - maximum performance for production systems with good hardware",
+      "MaxDegreeOfParallelism": 8,
+      "BatchSize": 200,
+      "UseDigestComparison": true,
+      "EnableInMemoryHistoryCache": true,
+      "HistoryCacheSizeMB": 200
+    }
+  ],
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "P4Sync": "Information"
+    }
+  }
+}

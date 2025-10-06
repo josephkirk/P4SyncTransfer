@@ -76,6 +76,42 @@
             "Feature branch merge: {source_workspace} - {now}",
             "{profile_name} sync completed at {now}"
           ]
+        },
+        "MaxDegreeOfParallelism": {
+          "type": "integer",
+          "description": "Maximum number of parallel threads for processing files. Higher values can improve performance on multi-core systems but increase memory and network usage. Default is 4.",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 32,
+          "examples": [1, 2, 4, 8, 16]
+        },
+        "BatchSize": {
+          "type": "integer",
+          "description": "Number of files to process in each batch. Larger batches can improve performance but increase memory usage. Default is 100.",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 1000,
+          "examples": [10, 50, 100, 200, 500]
+        },
+        "UseDigestComparison": {
+          "type": "boolean",
+          "description": "Use Perforce file digest (MD5) for comparison instead of downloading and comparing files. This dramatically improves performance by avoiding unnecessary file I/O. Default is true.",
+          "default": true,
+          "examples": [true, false]
+        },
+        "EnableInMemoryHistoryCache": {
+          "type": "boolean",
+          "description": "Cache sync history in memory to avoid repeated disk reads. This improves performance by eliminating thousands of disk I/O operations. Default is true.",
+          "default": true,
+          "examples": [true, false]
+        },
+        "HistoryCacheSizeMB": {
+          "type": "integer",
+          "description": "Maximum size of the history cache in megabytes. Larger caches can improve performance for large sync operations but consume more memory. Default is 100 MB.",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 1000,
+          "examples": [50, 100, 200, 500]
         }
       },
       "required": ["Name", "Source", "Target"],

@@ -1,0 +1,36 @@
+{
+  "$schema": "../src/config.schema.json",
+  "SyncProfiles": [
+    {
+      "Name": "Production-Conservative",
+      "Source": {
+        "Port": "source-server:1666",
+        "User": "sync_user",
+        "Workspace": "source_workspace"
+      },
+      "Target": {
+        "Port": "target-server:1666",
+        "User": "sync_user",
+        "Workspace": "target_workspace"
+      },
+      "SyncFilter": [
+        "//depot/main/..."
+      ],
+      "AutoSubmit": false,
+      "Description": "[Auto] Conservative sync from {source_server} at {now}",
+      
+      "_comment": "Conservative settings - safe for initial testing and production rollout",
+      "MaxDegreeOfParallelism": 2,
+      "BatchSize": 50,
+      "UseDigestComparison": true,
+      "EnableInMemoryHistoryCache": true,
+      "HistoryCacheSizeMB": 50
+    }
+  ],
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "P4Sync": "Debug"
+    }
+  }
+}

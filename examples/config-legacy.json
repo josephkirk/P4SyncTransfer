@@ -1,0 +1,36 @@
+{
+  "$schema": "../src/config.schema.json",
+  "SyncProfiles": [
+    {
+      "Name": "Production-Legacy",
+      "Source": {
+        "Port": "source-server:1666",
+        "User": "sync_user",
+        "Workspace": "source_workspace"
+      },
+      "Target": {
+        "Port": "target-server:1666",
+        "User": "sync_user",
+        "Workspace": "target_workspace"
+      },
+      "SyncFilter": [
+        "//depot/main/..."
+      ],
+      "AutoSubmit": false,
+      "Description": "[Auto] Legacy sync from {source_server} at {now}",
+      
+      "_comment": "Legacy settings - matches old behavior for backwards compatibility and troubleshooting",
+      "MaxDegreeOfParallelism": 1,
+      "BatchSize": 1,
+      "UseDigestComparison": false,
+      "EnableInMemoryHistoryCache": false,
+      "HistoryCacheSizeMB": 10
+    }
+  ],
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "P4Sync": "Debug"
+    }
+  }
+}
